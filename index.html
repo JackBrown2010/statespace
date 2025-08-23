@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Interactive Klotski Visualizer</title>
+<title>Interactive Klotski Visualizer - Draw Pieces</title>
 <style>
 body { margin:0; font-family:sans-serif; background:#111; color:#eee; }
 #gridContainer { display:flex; justify-content:center; margin-top:10px; }
 #gridCanvas { border:2px solid #555; cursor:crosshair; background:#222; }
 #controls { text-align:center; margin:10px; }
 #canvas3d { width:100%; height:70vh; display:block; background:#111; }
+button { margin:0 5px; padding:6px 10px; }
 </style>
 </head>
 <body>
@@ -18,6 +19,7 @@ body { margin:0; font-family:sans-serif; background:#111; color:#eee; }
   <canvas id="gridCanvas" width="360" height="360"></canvas>
 </div>
 <div id="controls">
+  <button id="createPieceBtn">Create Piece</button>
   <button id="visualizeBtn">Visualize All Reachable Layouts</button>
 </div>
 <canvas id="canvas3d"></canvas>
@@ -35,42 +37,72 @@ const CELL = canvas.width / GRID;
 let pieces = [];
 let pieceColors = ["#e74c3c","#3498db","#2ecc71","#f1c40f","#9b59b6"];
 let currentPieceId = 0;
-let placing = false;
 
-// Draw grid
+// Drawing state
+let drawing = false;
+let startX=0,startY=0;
+let tempPiece = null;
+
+// Draw grid and pieces
 function drawGrid(){
   ctx.fillStyle="#222"; ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.strokeStyle="#555"; ctx.lineWidth=1;
   for(let i=0;i<=GRID;i++){
-    ctx.beginPath();
-    ctx.moveTo(i*CELL,0); ctx.lineTo(i*CELL,canvas.height); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0,i*CELL); ctx.lineTo(canvas.width,i*CELL); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(i*CELL,0); ctx.lineTo(i*CELL,canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,i*CELL); ctx.lineTo(canvas.width,i*CELL); ctx.stroke();
   }
-  // draw pieces
+  // Draw finalized pieces
   for(const p of pieces){
     ctx.fillStyle=p.color;
     ctx.fillRect(p.x*CELL,p.y*CELL,p.w*CELL,p.h*CELL);
   }
+  // Draw temp piece while drawing
+  if(tempPiece){
+    ctx.fillStyle=tempPiece.color;
+    ctx.fillRect(tempPiece.x*CELL,tempPiece.y*CELL,tempPiece.w*CELL,tempPiece.h*CELL);
+  }
 }
 drawGrid();
 
-// Mouse to place pieces
+// Mouse events
 canvas.addEventListener('mousedown', e=>{
   if(currentPieceId>=5) return;
   const rect = canvas.getBoundingClientRect();
+  startX = Math.floor((e.clientX-rect.left)/CELL);
+  startY = Math.floor((e.clientY-rect.top)/CELL);
+  drawing = true;
+  tempPiece={id:currentPieceId,x:startX,y:startY,w:1,h:1,color:pieceColors[currentPieceId]};
+});
+
+canvas.addEventListener('mousemove', e=>{
+  if(!drawing) return;
+  const rect = canvas.getBoundingClientRect();
   const mx = Math.floor((e.clientX-rect.left)/CELL);
   const my = Math.floor((e.clientY-rect.top)/CELL);
-  // simple 1x1 piece
-  pieces.push({id:currentPieceId,x:mx,y:my,w:1,h:1,color:pieceColors[currentPieceId]});
-  currentPieceId++;
+  tempPiece.w = Math.max(1,mx-startX+1);
+  tempPiece.h = Math.max(1,my-startY+1);
   drawGrid();
+});
+
+canvas.addEventListener('mouseup', e=>{
+  drawing=false;
+  drawGrid();
+});
+
+// Create piece button
+document.getElementById('createPieceBtn').addEventListener('click',()=>{
+  if(!tempPiece){ alert("Draw a piece first!"); return; }
+  pieces.push({...tempPiece});
+  currentPieceId++;
+  tempPiece=null;
+  drawGrid();
+  if(currentPieceId>=5) document.getElementById('createPieceBtn').disabled=true;
 });
 
 // =========================
 // BFS solver for reachable layouts
 // =========================
-function serialize(state){ return state.map(p=>`${p.x},${p.y}`).join("|"); }
+function serialize(state){ return state.map(p=>`${p.x},${p.y},${p.w},${p.h}`).join("|"); }
 function cloneState(state){ return state.map(p=>({id:p.id,x:p.x,y:p.y,w:p.w,h:p.h,color:p.color})); }
 
 function valid(state){
@@ -125,7 +157,6 @@ function computeAllStates(start){
 // =========================
 let renderer,scene,camera,controls;
 function visualize3D(graph){
-  // Clear previous
   if(renderer) renderer.dispose();
   renderer=new THREE.WebGLRenderer({canvas:document.getElementById('canvas3d')});
   renderer.setSize(window.innerWidth,window.innerHeight*0.7);
@@ -167,10 +198,10 @@ function visualize3D(graph){
 }
 
 // =========================
-//  Button to visualize
+//  Visualize button
 // =========================
 document.getElementById('visualizeBtn').addEventListener('click',()=>{
-  if(pieces.length===0){ alert("Place at least one piece!"); return; }
+  if(pieces.length===0){ alert("Create at least one piece!"); return; }
   const graph=computeAllStates(pieces);
   visualize3D(graph);
 });
