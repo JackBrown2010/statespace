@@ -198,9 +198,69 @@ function visualize3D(graph){
 // =========================
 document.getElementById('visualizeBtn').addEventListener('click',()=>{
   if(pieces.length===0){ alert("Create at least one piece!"); return; }
-  const graph=computeAllStates(pieces);
-  visualize3D(graph);
+
+  console.log("Computing reachable states...");
+  const graph = computeAllStates(pieces);
+  console.log(`Total states: ${graph.states.length}, edges: ${graph.edges.length}`);
+
+  // Clear previous scene if exists
+  if(renderer){
+    renderer.forceContextLoss();
+    renderer.domElement = null;
+    renderer.dispose();
+  }
+
+  // Initialize Three.js
+  renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas3d')});
+  renderer.setSize(window.innerWidth, window.innerHeight*0.7);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111111);
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/(window.innerHeight*0.7), 0.1, 5000);
+  camera.position.set(30,30,50);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  scene.add(new THREE.AmbientLight(0x888888));
+  const light = new THREE.DirectionalLight(0xffffff,1);
+  light.position.set(50,50,50);
+  scene.add(light);
+
+  // Layout states
+  const posMap = new Map();
+  const spacing = 4;
+  graph.states.forEach((s,i)=>{
+    const x=(i%20)*spacing;
+    const y=Math.floor(i/400)*spacing;
+    const z=Math.floor(i/20)%20*spacing;
+    posMap.set(serialize(s), new THREE.Vector3(x,y,z));
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5,12,12),
+      new THREE.MeshStandardMaterial({color:0x3498db})
+    );
+    mesh.position.set(x,y,z);
+    scene.add(mesh);
+  });
+
+  // Add edges
+  graph.edges.forEach(([a,b])=>{
+    const p1 = posMap.get(a), p2 = posMap.get(b);
+    const geom = new THREE.BufferGeometry().setFromPoints([p1,p2]);
+    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({color:0x555555}));
+    scene.add(line);
+  });
+
+  // Animate
+  function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene,camera);
+  }
+  animate();
 });
+
 </script>
 </body>
 </html>
