@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Interactive Klotski Visualizer - Draw Pieces</title>
+<title>Klotski Visualizer - Arbitrary Pieces</title>
 <style>
 body { margin:0; font-family:sans-serif; background:#111; color:#eee; }
 #gridContainer { display:flex; justify-content:center; margin-top:10px; }
@@ -14,7 +14,7 @@ button { margin:0 5px; padding:6px 10px; }
 </head>
 <body>
 
-<h2 style="text-align:center;">Draw up to 5 pieces on 6x6 grid</h2>
+<h2 style="text-align:center;">Draw pieces with arbitrary squares on 6x6 grid</h2>
 <div id="gridContainer">
   <canvas id="gridCanvas" width="360" height="360"></canvas>
 </div>
@@ -26,22 +26,23 @@ button { margin:0 5px; padding:6px 10px; }
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+
 <script>
 // =========================
-//  Grid editor
+//  Grid Editor
 // =========================
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const GRID = 6;
 const CELL = canvas.width / GRID;
+
 let pieces = [];
 let pieceColors = ["#e74c3c","#3498db","#2ecc71","#f1c40f","#9b59b6"];
 let currentPieceId = 0;
 
-// Drawing state
+// Current drawing piece
+let tempSquares = [];
 let drawing = false;
-let startX=0,startY=0;
-let tempPiece = null;
 
 // Draw grid and pieces
 function drawGrid(){
@@ -54,47 +55,39 @@ function drawGrid(){
   // Draw finalized pieces
   for(const p of pieces){
     ctx.fillStyle=p.color;
-    ctx.fillRect(p.x*CELL,p.y*CELL,p.w*CELL,p.h*CELL);
+    for(const s of p.squares){
+      ctx.fillRect(s.x*CELL,s.y*CELL,CELL,CELL);
+    }
   }
-  // Draw temp piece while drawing
-  if(tempPiece){
-    ctx.fillStyle=tempPiece.color;
-    ctx.fillRect(tempPiece.x*CELL,tempPiece.y*CELL,tempPiece.w*CELL,tempPiece.h*CELL);
+  // Draw temp squares
+  if(tempSquares.length>0){
+    ctx.fillStyle=pieceColors[currentPieceId];
+    for(const s of tempSquares){
+      ctx.fillRect(s.x*CELL,s.y*CELL,CELL,CELL);
+    }
   }
 }
 drawGrid();
 
-// Mouse events
-canvas.addEventListener('mousedown', e=>{
+// Click to toggle square in temp piece
+canvas.addEventListener('click', e=>{
   if(currentPieceId>=5) return;
-  const rect = canvas.getBoundingClientRect();
-  startX = Math.floor((e.clientX-rect.left)/CELL);
-  startY = Math.floor((e.clientY-rect.top)/CELL);
-  drawing = true;
-  tempPiece={id:currentPieceId,x:startX,y:startY,w:1,h:1,color:pieceColors[currentPieceId]};
-});
-
-canvas.addEventListener('mousemove', e=>{
-  if(!drawing) return;
   const rect = canvas.getBoundingClientRect();
   const mx = Math.floor((e.clientX-rect.left)/CELL);
   const my = Math.floor((e.clientY-rect.top)/CELL);
-  tempPiece.w = Math.max(1,mx-startX+1);
-  tempPiece.h = Math.max(1,my-startY+1);
+  // toggle
+  const idx = tempSquares.findIndex(s=>s.x===mx && s.y===my);
+  if(idx>=0) tempSquares.splice(idx,1);
+  else tempSquares.push({x:mx,y:my});
   drawGrid();
 });
 
-canvas.addEventListener('mouseup', e=>{
-  drawing=false;
-  drawGrid();
-});
-
-// Create piece button
+// Create Piece button
 document.getElementById('createPieceBtn').addEventListener('click',()=>{
-  if(!tempPiece){ alert("Draw a piece first!"); return; }
-  pieces.push({...tempPiece});
+  if(tempSquares.length===0){ alert("Select at least one square!"); return; }
+  pieces.push({id:currentPieceId,squares:[...tempSquares],color:pieceColors[currentPieceId]});
   currentPieceId++;
-  tempPiece=null;
+  tempSquares=[];
   drawGrid();
   if(currentPieceId>=5) document.getElementById('createPieceBtn').disabled=true;
 });
@@ -102,16 +95,20 @@ document.getElementById('createPieceBtn').addEventListener('click',()=>{
 // =========================
 // BFS solver for reachable layouts
 // =========================
-function serialize(state){ return state.map(p=>`${p.x},${p.y},${p.w},${p.h}`).join("|"); }
-function cloneState(state){ return state.map(p=>({id:p.id,x:p.x,y:p.y,w:p.w,h:p.h,color:p.color})); }
+function serialize(state){
+  return state.map(p=>p.squares.map(s=>s.x+","+s.y).sort().join(";")).join("|");
+}
+function cloneState(state){
+  return state.map(p=>({id:p.id,squares:p.squares.map(s=>({x:s.x,y:s.y})),color:p.color}));
+}
 
 function valid(state){
   const occ=Array.from({length:GRID},()=>Array(GRID).fill(null));
   for(const p of state){
-    if(p.x<0||p.y<0||p.x+p.w>GRID||p.y+p.h>GRID) return false;
-    for(let i=0;i<p.w;i++) for(let j=0;j<p.h;j++){
-      if(occ[p.y+j][p.x+i]!==null) return false;
-      occ[p.y+j][p.x+i]=p.id;
+    for(const s of p.squares){
+      if(s.x<0||s.y<0||s.x>=GRID||s.y>=GRID) return false;
+      if(occ[s.y][s.x]!==null) return false;
+      occ[s.y][s.x]=p.id;
     }
   }
   return true;
@@ -123,15 +120,14 @@ function neighbors(state){
   for(const p of state){
     for(const [dx,dy] of dirs){
       const ns=cloneState(state);
-      ns.find(x=>x.id===p.id).x+=dx;
-      ns.find(x=>x.id===p.id).y+=dy;
+      const piece = ns.find(x=>x.id===p.id);
+      piece.squares.forEach(s=>{s.x+=dx; s.y+=dy;});
       if(valid(ns)) result.push(ns);
     }
   }
   return result;
 }
 
-// BFS all reachable
 function computeAllStates(start){
   const visited=new Map();
   const queue=[start];
