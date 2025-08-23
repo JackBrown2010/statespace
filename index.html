@@ -1,194 +1,706 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Klotski Puzzle with Solver</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #222;
-      color: #eee;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    canvas {
-      background: #fff;
-      margin: 20px;
-      border: 3px solid #444;
-    }
-    button {
-      margin: 5px;
-      padding: 10px 15px;
-      border-radius: 8px;
-      border: none;
-      background: #4a6cf7;
-      color: #fff;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #3653c9;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Customizable Klotski/Polyomino Puzzle + State Space Visualizer</title>
+<style>
+  :root {
+    --bg:#0f1220; --panel:#171a2b; --accent:#6ea8fe; --muted:#9aa3b2; --text:#e9eef8;
+    --danger:#ff6b6b; --ok:#2ecc71; --warn:#f1c40f;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+    background:var(--bg); color:var(--text); display:flex; flex-direction:column; gap:12px;
+  }
+  header{
+    padding:14px 16px; background:var(--panel); border-bottom:1px solid #22273d;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;
+  }
+  header h1{font-size:18px; margin:0; font-weight:600}
+  .wrap{display:grid; grid-template-columns: 420px 1fr; gap:12px; padding:12px}
+  .panel{
+    background:var(--panel); border:1px solid #22273d; border-radius:14px; padding:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+  }
+  .panel h2{margin:0 0 8px 0; font-size:14px; color:#c7d2ff; letter-spacing:.3px}
+  .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  button, select, input[type="number"]{
+    background:#212641; color:var(--text); border:1px solid #2b3054; border-radius:10px;
+    padding:8px 10px; font-size:13px;
+  }
+  button{cursor:pointer}
+  button.primary{background:var(--accent); color:#0b1025; border-color:transparent; font-weight:700}
+  button.danger{background:#3a1f28; color:#ffd7de; border:1px solid #5a2a36}
+  button.ok{background:#143022; color:#c6ffdc; border:1px solid #1f4a34}
+  .row{display:flex; gap:8px; align-items:center; margin-top:8px}
+  .grid{
+    width:100%; aspect-ratio: 4 / 5; background:#0c0f1c; border:1px solid #22273d; border-radius:12px;
+    display:grid; place-items:center; overflow:hidden;
+  }
+  canvas#board{width:100%; height:100%}
+  .legend{font-size:12px; color:var(--muted)}
+  textarea{
+    width:100%; min-height:220px; background:#0c0f1c; color:#e8eefc; border:1px solid #22273d; border-radius:10px;
+    padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px;
+  }
+  .gridInfo{display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:6px}
+  .twoCols{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+  .badge{padding:2px 8px; border:1px solid #2b3054; border-radius:999px; font-size:11px; color:#cbd5ff;}
+  #graph{width:100%; height:520px; background:#0c0f1c; border:1px solid #22273d; border-radius:12px;}
+  .note{color:#9fb0ff; font-size:12px; margin-top:6px}
+  .small{font-size:12px}
+  .goalBox{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .goalBox input{width:80px}
+  .hr{height:1px; background:#22273d; margin:10px 0}
+</style>
 </head>
 <body>
-  <h1>Klotski Puzzle</h1>
-  <canvas id="board" width="300" height="360"></canvas>
-  <div>
-    <button id="solveBtn">Solve Puzzle</button>
-    <button id="resetBtn">Reset</button>
+<header>
+  <h1>Custom Puzzle + State Space Visualizer</h1>
+  <div class="controls">
+    <button class="primary" id="applyConfigBtn">Apply Config</button>
+    <button id="resetBtn">Reset Board</button>
+    <span class="badge" id="statusBadge">Idle</span>
   </div>
+</header>
 
+<div class="wrap">
+  <section class="panel">
+    <h2>Board</h2>
+    <div class="grid">
+      <canvas id="board" width="600" height="750"></canvas>
+    </div>
+    <div class="gridInfo">
+      <span>Drag pieces. Snap to grid. Collisions prevented.</span>
+      <span>Zoom: Ctrl + Mousewheel (graph only).</span>
+    </div>
+    <div class="hr"></div>
+    <div class="twoCols">
+      <div>
+        <h2>Solve / Explore</h2>
+        <div class="row">
+          <button id="solveBtn">Shortest Path to Goal</button>
+          <button id="playPathBtn">Animate Path</button>
+          <button class="danger" id="stopAnimBtn">Stop</button>
+        </div>
+        <div class="row">
+          <button id="buildGraphBtn">Build State Graph</button>
+          <label class="small">Max States <input type="number" id="maxStates" value="4000" min="100" step="100"></label>
+        </div>
+        <div class="row">
+          <label class="small">Visit Order:
+            <select id="order">
+              <option value="bfs" selected>BFS (shortest first)</option>
+              <option value="dfs">DFS (deep exploration)</option>
+            </select>
+          </label>
+          <label class="small">Neighbor Rule:
+            <select id="neighborRule">
+              <option value="orthogonal" selected>4-dir, 1 cell step</option>
+              <option value="slide">Slide to nearest stop</option>
+            </select>
+          </label>
+        </div>
+        <div class="row goalBox">
+          <span class="small">Goal piece ID:</span>
+          <input type="text" id="goalId" value="A">
+          <span class="small">Goal X</span><input type="number" id="goalX" value="1">
+          <span class="small">Goal Y</span><input type="number" id="goalY" value="3">
+          <span class="small">W</span><input type="number" id="goalW" value="2">
+          <span class="small">H</span><input type="number" id="goalH" value="2">
+        </div>
+        <div class="note">Click nodes in the graph to load that state on the board.</div>
+      </div>
+      <div>
+        <h2>State Graph</h2>
+        <div id="graph"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Config (edit JSON, then “Apply Config”)</h2>
+    <div class="legend">You can define any board size and piece shapes. Each piece lists its occupied cells relative to its origin (top-left). Example below creates a Klotski-like layout with a 4×5 board.</div>
+    <textarea id="configArea"></textarea>
+    <div class="row">
+      <button id="prettyBtn">Pretty-print</button>
+      <button id="restoreBtn">Restore Example</button>
+      <span class="badge" id="cfgMsg">OK</span>
+    </div>
+    <div class="hr"></div>
+    <div class="legend">
+      <strong>Config schema</strong>
+      <pre class="small" style="white-space:pre-wrap; margin:6px 0 0;">
+{
+  "board": { "cols": 4, "rows": 5, "cell": 120 },
+  "pieces": [
+    { "id": "A", "color": "#e74c3c", "pos": [1,0],
+      "cells": [[0,0],[1,0],[0,1],[1,1]] },                // 2x2
+    { "id": "B", "color": "#3498db", "pos": [0,0],
+      "cells": [[0,0],[0,1]] },                            // 1x2
+    { "id": "C", "color": "#3498db", "pos": [3,0],
+      "cells": [[0,0],[0,1]] },
+    { "id": "D", "color": "#2ecc71", "pos": [0,2],
+      "cells": [[0,0],[1,0]] },                            // 2x1
+    { "id": "E", "color": "#9b59b6", "pos": [0,4],
+      "cells": [[0,0]] },                                  // 1x1
+    { "id": "F", "color": "#9b59b6", "pos": [3,4],
+      "cells": [[0,0]] }
+  ],
+  "goal": { "id": "A", "x": 1, "y": 3, "w": 2, "h": 2 }
+}
+      </pre>
+    </div>
+  </section>
+</div>
+
+<!-- D3 for force-directed graph (2D). Works offline via CDN when online. -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script>
-/* ---------------- State Representation ---------------- */
+/* =========================
+   Utility / Types
+========================= */
+const $ = sel => document.querySelector(sel);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-// Board is 5 wide x 6 tall
-const COLS = 4;
-const ROWS = 5;
-const SIZE = 70; // pixel size per cell
-const ctx = document.getElementById("board").getContext("2d");
+function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
 
-// Block definition: {w,h,color}
-const blockTypes = {
-  A: {w:2,h:2,color:"#e74c3c"}, // big block
-  B: {w:1,h:2,color:"#3498db"},
-  C: {w:2,h:1,color:"#2ecc71"},
-  D: {w:1,h:1,color:"#9b59b6"},
+function hashState(state){
+  // Sort pieces by id and join positions; robust serialization
+  const parts = state.pieces
+    .slice()
+    .sort((a,b)=>a.id.localeCompare(b.id))
+    .map(p => p.id+":"+p.pos[0]+","+p.pos[1])
+    .join("|");
+  return parts;
+}
+
+/* =========================
+   Default Config
+========================= */
+const EXAMPLE_CONFIG = {
+  board: { cols: 4, rows: 5, cell: 120 },
+  pieces: [
+    { id: "A", color:"#e74c3c", pos:[1,0], cells:[[0,0],[1,0],[0,1],[1,1]] }, // 2x2
+    { id: "B", color:"#3498db", pos:[0,0], cells:[[0,0],[0,1]] },             // 1x2
+    { id: "C", color:"#3498db", pos:[3,0], cells:[[0,0],[0,1]] },             // 1x2
+    { id: "D", color:"#2ecc71", pos:[0,2], cells:[[0,0],[1,0]] },             // 2x1
+    { id: "E", color:"#9b59b6", pos:[0,4], cells:[[0,0]] },                   // 1x1
+    { id: "F", color:"#9b59b6", pos:[3,4], cells:[[0,0]] }                    // 1x1
+  ],
+  goal: { id: "A", x:1, y:3, w:2, h:2 }
 };
 
-let initialState = {
-  A:[1,0], // big block top-left corner
-  B:[0,0],
-  C:[0,2],
-  D:[3,0],
-  E:[0,4],
-  F:[1,3],
-  G:[2,3],
-  H:[3,4],
-};
+let cfg = deepClone(EXAMPLE_CONFIG);
 
-let goalState = {
-  ...initialState,
-  A:[1,3], // big block at bottom middle
-};
+/* =========================
+   Canvas Board + Dragging
+========================= */
+const board = $("#board");
+const ctx = board.getContext("2d");
+let dragging = null;
+let dragOffset = [0,0];
 
-let state = JSON.parse(JSON.stringify(initialState));
+function resizeBoard(){
+  // Keep internal resolution aligned to cell size for crispness
+  const {cols, rows, cell} = cfg.board;
+  board.width  = cols*cell;
+  board.height = rows*cell;
+}
 
-/* ---------------- Rendering ---------------- */
-function drawState(s) {
-  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-  for (let block in s) {
-    let [x,y] = s[block];
-    let def = blockTypes[block] || blockTypes.D;
-    let w = def.w*SIZE, h = def.h*SIZE;
-    ctx.fillStyle = def.color;
-    ctx.fillRect(x*SIZE, y*SIZE, w-4, h-4);
-    ctx.fillStyle="#fff";
-    ctx.font="20px Arial";
-    ctx.fillText(block, x*SIZE+w/2-5, y*SIZE+h/2+5);
+function cellRect(x,y,cell){ return [x*cell, y*cell, cell, cell]; }
+
+function drawGrid(){
+  const {cols, rows, cell} = cfg.board;
+  ctx.clearRect(0,0,board.width, board.height);
+  // background
+  ctx.fillStyle = "#0a0e1a";
+  ctx.fillRect(0,0,board.width, board.height);
+  // grid
+  ctx.strokeStyle = "#1a2140";
+  for(let x=0;x<=cols;x++){
+    ctx.beginPath(); ctx.moveTo(x*cell,0); ctx.lineTo(x*cell,rows*cell); ctx.stroke();
+  }
+  for(let y=0;y<=rows;y++){
+    ctx.beginPath(); ctx.moveTo(0,y*cell); ctx.lineTo(cols*cell,y*cell); ctx.stroke();
+  }
+  // goal area
+  if (cfg.goal){
+    const {x,y,w,h} = cfg.goal;
+    ctx.fillStyle = "rgba(255, 215, 0, 0.12)";
+    ctx.fillRect(x*cell, y*cell, w*cell, h*cell);
+    ctx.strokeStyle = "#f1c40f";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x*cell+1, y*cell+1, w*cell-2, h*cell-2);
+    ctx.lineWidth = 1;
   }
 }
 
-/* ---------------- Solver (BFS) ---------------- */
-function serialize(s) {
-  return JSON.stringify(s);
-}
-
-function isGoal(s) {
-  return s.A[0]===goalState.A[0] && s.A[1]===goalState.A[1];
-}
-
-function getNeighbors(s) {
-  let neighbors = [];
-  for (let block in s) {
-    let [x,y] = s[block];
-    let def = blockTypes[block] || blockTypes.D;
-    let moves = [[1,0],[-1,0],[0,1],[0,-1]];
-    for (let [dx,dy] of moves) {
-      let nx=x+dx, ny=y+dy;
-      let candidate = {...s};
-      candidate[block]=[nx,ny];
-      if (valid(candidate,block)) neighbors.push(candidate);
+function drawPieces(state){
+  const {cell} = cfg.board;
+  for(const p of state.pieces){
+    // shadow
+    ctx.save();
+    ctx.translate(p.pos[0]*cell, p.pos[1]*cell);
+    ctx.fillStyle = p.color || "#6ea8fe";
+    for(const c of p.cells){
+      ctx.fillRect(c[0]*cell+2, c[1]*cell+2, cell-4, cell-4);
     }
+    // label
+    ctx.fillStyle = "rgba(0,0,0,.45)";
+    ctx.font = `${Math.floor(cell*0.32)}px ui-monospace,monospace`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    // find centroid of cells
+    let cx=0, cy=0;
+    for(const c of p.cells){ cx+=c[0]; cy+=c[1]; }
+    cx = (cx/p.cells.length + 0.5)*cell;
+    cy = (cy/p.cells.length + 0.5)*cell;
+    ctx.fillText(p.id, cx, cy);
+    ctx.restore();
   }
-  return neighbors;
 }
 
-function valid(s, movedBlock) {
-  // Check inside board
-  for (let block in s) {
-    let [x,y] = s[block];
-    let def = blockTypes[block] || blockTypes.D;
-    if (x<0 || y<0 || x+def.w>COLS || y+def.h>ROWS) return false;
-  }
-  // Check overlaps
-  let occ = Array.from({length:ROWS},()=>Array(COLS).fill(null));
-  for (let block in s) {
-    let [x,y] = s[block];
-    let def = blockTypes[block] || blockTypes.D;
-    for (let i=0;i<def.w;i++) {
-      for (let j=0;j<def.h;j++) {
-        if (occ[y+j][x+i]) return false;
-        occ[y+j][x+i]=block;
-      }
+function render(state){
+  drawGrid();
+  drawPieces(state);
+}
+
+/* =========================
+   Geometry / Rules
+========================= */
+function occupiedCellsOfPiece(p){
+  return p.cells.map(c => [c[0]+p.pos[0], c[1]+p.pos[1]]);
+}
+
+function insideBoard(x,y){
+  return x>=0 && y>=0 && x<cfg.board.cols && y<cfg.board.rows;
+}
+
+function validState(state){
+  // check inside + overlap
+  const occ = new Map(); // "x,y" -> id
+  for(const p of state.pieces){
+    for(const [gx,gy] of occupiedCellsOfPiece(p)){
+      if(!insideBoard(gx,gy)) return false;
+      const key = gx+","+gy;
+      if(occ.has(key)) return false;
+      occ.set(key, p.id);
     }
   }
   return true;
 }
 
-function bfsSolve(start) {
-  let queue=[start];
-  let visited=new Set([serialize(start)]);
-  let parent=new Map();
-  while (queue.length) {
-    let cur=queue.shift();
-    if (isGoal(cur)) {
-      let path=[cur];
-      while (parent.has(serialize(cur))) {
-        cur=parent.get(serialize(cur));
-        path.push(cur);
-      }
-      return path.reverse();
+function deepCopyState(s){ return { pieces: s.pieces.map(p => ({...p, pos:[...p.pos], cells:p.cells.map(c=>[...c])})) }; }
+
+/* =========================
+   Mouse: pick & drag
+========================= */
+let current = { pieces: deepClone(cfg.pieces) };
+
+function hitTestPiece(mx,my){
+  const {cell} = cfg.board;
+  const gx = Math.floor(mx/cell), gy = Math.floor(my/cell);
+  // pick topmost by order (reverse to prefer later drawn)
+  for(let i=current.pieces.length-1;i>=0;i--){
+    const p=current.pieces[i];
+    for(const [cx,cy] of occupiedCellsOfPiece(p)){
+      if (cx===gx && cy===gy) return p;
     }
-    for (let n of getNeighbors(cur)) {
-      let key=serialize(n);
-      if (!visited.has(key)) {
-        visited.add(key);
-        parent.set(key,cur);
-        queue.push(n);
+  }
+  return null;
+}
+
+board.addEventListener("mousedown", e=>{
+  const rect = board.getBoundingClientRect();
+  const mx = (e.clientX-rect.left) * (board.width/rect.width);
+  const my = (e.clientY-rect.top)  * (board.height/rect.height);
+  const p = hitTestPiece(mx,my);
+  if(p){
+    dragging = p;
+    dragOffset = [mx - dragging.pos[0]*cfg.board.cell, my - dragging.pos[1]*cfg.board.cell];
+  }
+});
+
+board.addEventListener("mousemove", e=>{
+  if(!dragging) return;
+  const rect = board.getBoundingClientRect();
+  const mx = (e.clientX-rect.left) * (board.width/rect.width);
+  const my = (e.clientY-rect.top)  * (board.height/rect.height);
+  // snap
+  const x = Math.round((mx - dragOffset[0]) / cfg.board.cell);
+  const y = Math.round((my - dragOffset[1]) / cfg.board.cell);
+  const old = [dragging.pos[0], dragging.pos[1]];
+  dragging.pos[0]=x; dragging.pos[1]=y;
+  if(!validState(current)){ dragging.pos[0]=old[0]; dragging.pos[1]=old[1]; }
+  render(current);
+});
+
+window.addEventListener("mouseup", ()=> dragging=null);
+
+/* =========================
+   Neighbors (moves)
+========================= */
+function* orthogonalNeighbors(state){
+  // move each piece by +/-1 in 4 directions if valid
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<state.pieces.length;i++){
+    const p = state.pieces[i];
+    for(const [dx,dy] of dirs){
+      const next = deepCopyState(state);
+      next.pieces[i].pos[0]+=dx;
+      next.pieces[i].pos[1]+=dy;
+      if(validState(next)) yield next;
+    }
+  }
+}
+
+function* slideNeighbors(state){
+  // slide until collision in 4 directions (classic sliding-block style)
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<state.pieces.length;i++){
+    for(const [dx,dy] of dirs){
+      let next = deepCopyState(state);
+      let moved=false;
+      while(true){
+        const trial = deepCopyState(next);
+        trial.pieces[i].pos[0]+=dx;
+        trial.pieces[i].pos[1]+=dy;
+        if(validState(trial)){
+          next = trial; moved = true;
+          // yield each intermediate slide stop (optional); here: only final stop
+          continue;
+        }
+        break;
+      }
+      if(moved) yield next;
+    }
+  }
+}
+
+function neighborsOf(state){
+  const rule = $("#neighborRule").value;
+  return rule==="slide" ? [...slideNeighbors(state)] : [...orthogonalNeighbors(state)];
+}
+
+/* =========================
+   Goal / Solve
+========================= */
+function isGoal(state){
+  const goalId = $("#goalId").value.trim() || cfg.goal?.id;
+  const gx = +$("#goalX").value || cfg.goal?.x;
+  const gy = +$("#goalY").value || cfg.goal?.y;
+  const gw = +$("#goalW").value || cfg.goal?.w || 1;
+  const gh = +$("#goalH").value || cfg.goal?.h || 1;
+
+  const piece = state.pieces.find(p=>p.id===goalId);
+  if(!piece) return false;
+  // piece's occupied cells must be exactly the goal rectangle cells (set compare)
+  const want = new Set();
+  for(let x=0;x<gw;x++) for(let y=0;y<gh;y++) want.add((gx+x)+","+(gy+y));
+  const has  = new Set(occupiedCellsOfPiece(piece).map(([x,y])=>x+","+y));
+  if (want.size !== has.size) return false;
+  for(const k of want) if(!has.has(k)) return false;
+  return true;
+}
+
+function reconstruct(parent, key){
+  const path=[];
+  while(key){
+    path.push(parent.get(key).state);
+    key = parent.get(key).prev;
+  }
+  return path.reverse();
+}
+
+function shortestPath(startState, cap=4000, order="bfs"){
+  const startKey = hashState(startState);
+  const parent = new Map(); // key -> {prev:key|null, state}
+  const seen = new Set([startKey]);
+  parent.set(startKey, {prev:null, state:deepCopyState(startState)});
+  let work;
+
+  if(order==="bfs"){
+    work = [deepCopyState(startState)];
+    while(work.length && parent.size<cap){
+      const s = work.shift();
+      if(isGoal(s)) return reconstruct(parent, hashState(s));
+      for(const n of neighborsOf(s)){
+        const k=hashState(n);
+        if(!seen.has(k)){
+          seen.add(k);
+          parent.set(k, {prev:hashState(s), state:n});
+          work.push(n);
+        }
+      }
+    }
+  }else{ // dfs
+    work = [deepCopyState(startState)];
+    while(work.length && parent.size<cap){
+      const s = work.pop();
+      if(isGoal(s)) return reconstruct(parent, hashState(s));
+      for(const n of neighborsOf(s)){
+        const k=hashState(n);
+        if(!seen.has(k)){
+          seen.add(k);
+          parent.set(k, {prev:hashState(s), state:n});
+          work.push(n);
+        }
       }
     }
   }
   return null;
 }
 
-/* ---------------- Visualization ---------------- */
-let solution=null;
-let step=0;
+/* =========================
+   Full State Graph (BFS)
+========================= */
+let GRAPH = {nodes:[], links:[], indexByKey:new Map(), statesByKey:new Map()};
+let animTimer = null;
+let lastPath = null;
 
-document.getElementById("solveBtn").onclick=()=>{
-  solution=bfsSolve(state);
-  step=0;
-  if (solution) {
-    let interval=setInterval(()=>{
-      if (step<solution.length) {
-        drawState(solution[step]);
-        step++;
-      } else clearInterval(interval);
-    },400);
-  } else {
-    alert("No solution found!");
+function buildGraph(startState, cap=4000, order="bfs"){
+  const startKey = hashState(startState);
+  const seen = new Set([startKey]);
+  const queue = [deepCopyState(startState)];
+  const indexByKey = new Map([[startKey,0]]);
+  const statesByKey = new Map([[startKey, deepCopyState(startState)]]);
+  const depthByKey = new Map([[startKey, 0]]);
+  const nodes = [{id:0, key:startKey, depth:0}];
+  const links = [];
+
+  function enqueue(s, parentKey){
+    const k = hashState(s);
+    if(seen.has(k)) return null;
+    seen.add(k);
+    const idx = nodes.length;
+    indexByKey.set(k, idx);
+    statesByKey.set(k, s);
+    const d = (depthByKey.get(parentKey) ?? 0) + 1;
+    depthByKey.set(k, d);
+    nodes.push({id:idx, key:k, depth:d});
+    return idx;
+  }
+
+  if(order==="bfs"){
+    while(queue.length && nodes.length<cap){
+      const cur = queue.shift();
+      const curKey = hashState(cur);
+      for(const n of neighborsOf(cur)){
+        if(nodes.length>=cap) break;
+        const idx = enqueue(n, curKey);
+        const nk  = hashState(n);
+        if(idx!==null){
+          queue.push(n);
+          links.push({source:indexByKey.get(curKey), target:idx});
+        }else{
+          // even if seen, include link (optional). Keep sparse to reduce clutter:
+          // links.push({source:indexByKey.get(curKey), target:indexByKey.get(nk)});
+        }
+      }
+    }
+  }else{
+    // DFS stack
+    const stack = [deepCopyState(startState)];
+    while(stack.length && nodes.length<cap){
+      const cur = stack.pop();
+      const curKey = hashState(cur);
+      for(const n of neighborsOf(cur)){
+        if(nodes.length>=cap) break;
+        const idx = enqueue(n, curKey);
+        const nk  = hashState(n);
+        if(idx!==null){
+          stack.push(n);
+          links.push({source:indexByKey.get(curKey), target:idx});
+        }
+      }
+    }
+  }
+
+  GRAPH = {nodes, links, indexByKey, statesByKey};
+  $("#statusBadge").innerText = `Graph: ${nodes.length} states, ${links.length} moves`;
+  return GRAPH;
+}
+
+/* =========================
+   Graph Visualization (D3)
+========================= */
+let svg, gMain, gLinks, gNodes, sim;
+
+function initGraph(){
+  const el = $("#graph");
+  el.innerHTML = ""; // reset
+
+  const w = el.clientWidth, h = el.clientHeight;
+  svg = d3.select(el).append("svg").attr("width", w).attr("height", h)
+    .call(d3.zoom().filter(e => e.ctrlKey).on("zoom", (event)=>{
+      gMain.attr("transform", event.transform);
+    }));
+
+  gMain  = svg.append("g");
+  gLinks = gMain.append("g").attr("stroke","#21305a").attr("stroke-width",1).attr("opacity",0.5);
+  gNodes = gMain.append("g");
+
+  sim = d3.forceSimulation()
+    .force("link", d3.forceLink().id(d => d.id).distance(30).strength(0.2))
+    .force("charge", d3.forceManyBody().strength(-60))
+    .force("center", d3.forceCenter(w/2, h/2))
+    .force("collide", d3.forceCollide(10));
+}
+
+function drawGraph(pathKeys=[]){
+  initGraph();
+  const nodes = GRAPH.nodes;
+  const links = GRAPH.links;
+  const maxDepth = d3.max(nodes, d=>d.depth)||1;
+
+  const inPath = new Set(pathKeys);
+
+  const linkSel = gLinks.selectAll("line").data(links).join("line");
+
+  const nodeSel = gNodes.selectAll("circle").data(nodes).join("circle")
+    .attr("r", d => inPath.has(d.key)? 5.5 : 4)
+    .attr("fill", d => inPath.has(d.key) ? "#f1c40f" : d3.interpolateCool(d.depth/(maxDepth||1)))
+    .attr("stroke", d => inPath.has(d.key) ? "#fff" : "transparent")
+    .attr("stroke-width", 1.5)
+    .on("click", (evt, d) => {
+      const s = GRAPH.statesByKey.get(d.key);
+      current = deepCopyState(s);
+      render(current);
+      highlightNode(d.key);
+    })
+    .append("title").text(d=>`State #${d.id}\nDepth ${d.depth}`);
+
+  sim.nodes(nodes).on("tick", ()=>{
+    linkSel
+      .attr("x1", d=>d.source.x).attr("y1", d=>d.source.y)
+      .attr("x2", d=>d.target.x).attr("y2", d=>d.target.y);
+    gNodes.selectAll("circle")
+      .attr("cx", d=>d.x).attr("cy", d=>d.y);
+  });
+  sim.force("link").links(links);
+}
+
+function highlightNode(key){
+  const nodes = gNodes.selectAll("circle");
+  nodes.attr("stroke", d => d.key===key ? "#fff" : "transparent")
+       .attr("stroke-width", d => d.key===key ? 2 : 1);
+}
+
+/* =========================
+   UI: Apply config, Solve, Build graph
+========================= */
+function applyConfigFromUI(){
+  try{
+    const parsed = JSON.parse($("#configArea").value);
+    // basic checks
+    if(!parsed.board || !parsed.pieces) throw new Error("Missing 'board' or 'pieces'.");
+    cfg = parsed;
+    $("#cfgMsg").innerText = "OK";
+    // sync goal inputs
+    if(cfg.goal){
+      $("#goalId").value = cfg.goal.id ?? "A";
+      $("#goalX").value  = cfg.goal.x ?? 0;
+      $("#goalY").value  = cfg.goal.y ?? 0;
+      $("#goalW").value  = cfg.goal.w ?? 1;
+      $("#goalH").value  = cfg.goal.h ?? 1;
+    }
+    // rebuild current
+    resizeBoard();
+    current = { pieces: deepClone(cfg.pieces) };
+    render(current);
+    $("#statusBadge").innerText = "Config applied";
+  }catch(e){
+    $("#cfgMsg").innerText = "Error: "+e.message;
+  }
+}
+
+function prettyPrintConfig(){
+  try{
+    const obj = JSON.parse($("#configArea").value);
+    $("#configArea").value = JSON.stringify(obj, null, 2);
+    $("#cfgMsg").innerText = "Pretty";
+  }catch(e){
+    $("#cfgMsg").innerText = "JSON error";
+  }
+}
+
+function restoreExample(){
+  $("#configArea").value = JSON.stringify(EXAMPLE_CONFIG, null, 2);
+  $("#cfgMsg").innerText = "Restored example";
+}
+
+function animatePath(path){
+  stopAnim();
+  if(!path || path.length===0) return;
+  let i=0;
+  animTimer = setInterval(()=>{
+    current = deepCopyState(path[i]);
+    render(current);
+    i++;
+    if(i>=path.length) stopAnim();
+  }, 400);
+}
+
+function stopAnim(){
+  if(animTimer){ clearInterval(animTimer); animTimer=null; }
+}
+
+/* =========================
+   Hook up buttons
+========================= */
+$("#applyConfigBtn").onclick = applyConfigFromUI;
+$("#prettyBtn").onclick = prettyPrintConfig;
+$("#restoreBtn").onclick = ()=>{ restoreExample(); applyConfigFromUI(); };
+$("#resetBtn").onclick = ()=>{
+  current = { pieces: deepClone(cfg.pieces) };
+  render(current);
+  $("#statusBadge").innerText = "Board reset";
+};
+
+$("#solveBtn").onclick = ()=>{
+  const cap = +$("#maxStates").value || 4000;
+  const order = $("#order").value;
+  const path = shortestPath(current, cap, order);
+  if(!path){
+    $("#statusBadge").innerText = "No path (cap hit or unreachable)";
+    lastPath = null;
+  }else{
+    $("#statusBadge").innerText = `Path length: ${path.length-1} moves`;
+    lastPath = path;
+    // also highlight on graph if exists
+    if(GRAPH.nodes.length>0){
+      const keys = path.map(s => hashState(s));
+      drawGraph(keys);
+    }
   }
 };
 
-document.getElementById("resetBtn").onclick=()=>{
-  state=JSON.parse(JSON.stringify(initialState));
-  drawState(state);
+$("#playPathBtn").onclick = ()=> animatePath(lastPath);
+$("#stopAnimBtn").onclick = stopAnim;
+
+$("#buildGraphBtn").onclick = ()=>{
+  const cap = +$("#maxStates").value || 4000;
+  const order = $("#order").value;
+  const G = buildGraph(current, cap, order);
+  drawGraph([]);
 };
 
-/* ---------------- Init ---------------- */
-drawState(state);
+/* =========================
+   Bootstrap
+========================= */
+function init(){
+  $("#configArea").value = JSON.stringify(EXAMPLE_CONFIG, null, 2);
+  resizeBoard();
+  current = { pieces: deepClone(cfg.pieces) };
+  render(current);
+  // Build an initial small graph so graph area isn't empty
+  buildGraph(current, 800, "bfs");
+  drawGraph([]);
+  $("#statusBadge").innerText = "Ready";
+}
+init();
 </script>
 </body>
 </html>
