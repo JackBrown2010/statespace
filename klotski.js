@@ -16,6 +16,10 @@ class KlotskiPuzzle {
     }
     
     initializeDOM() {
+        this.boardWidthInput = document.getElementById('board-width');
+        this.boardHeightInput = document.getElementById('board-height');
+        this.applyBoardSizeBtn = document.getElementById('apply-board-size');
+        
         this.addPiece1x1Btn = document.getElementById('add-piece-1x1');
         this.addPiece1x2Btn = document.getElementById('add-piece-1x2');
         this.addPiece2x1Btn = document.getElementById('add-piece-2x1');
@@ -29,6 +33,8 @@ class KlotskiPuzzle {
         
         this.finishShapeBtn = document.getElementById('finish-shape');
         this.cancelShapeBtn = document.getElementById('cancel-shape');
+        this.toggleUnreachableBtn = document.getElementById('toggle-unreachable');
+        this.toggleAllCombinationsBtn = document.getElementById('toggle-all-combinations');
         
         this.puzzleBoard = document.getElementById('puzzle-board');
         this.drawingCanvas = document.getElementById('drawing-canvas');
@@ -41,6 +47,8 @@ class KlotskiPuzzle {
     }
     
     setupEventListeners() {
+        this.applyBoardSizeBtn.addEventListener('click', () => this.applyBoardSize());
+        
         this.addPiece1x1Btn.addEventListener('click', () => this.addPiece(1, 1));
         this.addPiece1x2Btn.addEventListener('click', () => this.addPiece(1, 2));
         this.addPiece2x1Btn.addEventListener('click', () => this.addPiece(2, 1));
@@ -50,6 +58,17 @@ class KlotskiPuzzle {
         this.generateSpaceBtn.addEventListener('click', () => this.generateStateSpace());
         this.autoRotateBtn.addEventListener('click', () => this.toggleAutoRotate());
         
+        // Add new button for random custom shape
+        this.addRandomCustomShapeBtn = document.createElement('button');
+        this.addRandomCustomShapeBtn.id = 'add-random-custom-shape';
+        this.addRandomCustomShapeBtn.className = 'btn';
+        this.addRandomCustomShapeBtn.textContent = 'Add Random Custom Shape';
+        this.addRandomCustomShapeBtn.addEventListener('click', () => this.addRandomCustomShape());
+        
+        // Insert the button after the draw custom shape button
+        const drawCustomShapeBtn = document.getElementById('draw-custom-shape');
+        drawCustomShapeBtn.parentNode.insertBefore(this.addRandomCustomShapeBtn, drawCustomShapeBtn.nextSibling);
+        
         this.finishShapeBtn.addEventListener('click', () => this.finishCustomShape());
         this.cancelShapeBtn.addEventListener('click', () => this.cancelCustomShape());
         
@@ -58,8 +77,210 @@ class KlotskiPuzzle {
             this.nodeSizeValue.textContent = value;
             this.updateNodeSizes(parseFloat(value));
         });
+        
+        this.toggleUnreachableBtn.addEventListener('click', () => this.toggleUnreachableStates());
+        this.toggleAllCombinationsBtn.addEventListener('click', () => this.toggleAllCombinations());
     }
     
+    toggleUnreachableStates() {
+        this.showingUnreachableOnly = !this.showingUnreachableOnly;
+        this.toggleUnreachableBtn.textContent = this.showingUnreachableOnly ? 'Show All States' : 'Show Unreachable States';
+        
+        this.render3DStateSpace();
+    }
+    
+    toggleAllCombinations() {
+        this.showingAllCombinations = !this.showingAllCombinations;
+        this.toggleAllCombinationsBtn.textContent = this.showingAllCombinations 
+            ? 'Show Valid States Only' 
+            : 'Show All Combinations';
+        
+        if (this.showingAllCombinations) {
+            this.generateAllCombinations();
+        } else {
+            this.generateStateSpace();
+        }
+    }
+
+    generateAllCombinations() {
+        if (this.pieces.length === 0) {
+            alert('Add some pieces first!');
+            return;
+        }
+
+        this.clearStateSpace();
+        
+        // Generate all possible position combinations for pieces
+        const allStates = new Set();
+        const allPieces = this.pieces.map(p => ({...p}));
+        
+        // Create a mapping to store piece positions
+        const generateCombinations = (pieceIndex, currentState) => {
+            if (pieceIndex >= allPieces.length) {
+                // Valid complete configuration found
+                const stateString = this.getStateStringFromPieces(currentState);
+                allStates.add(stateString);
+                return;
+            }
+            
+            const piece = allPieces[pieceIndex];
+            const pieceWidth = piece.isCustom ? Math.max(...piece.cells.map(c => c.x)) + 1 : piece.width;
+            const pieceHeight = piece.isCustom ? Math.max(...piece.cells.map(c => c.y)) + 1 : piece.height;
+            
+            // Try all possible positions for this piece
+            for (let y = 0; y <= this.boardHeight - pieceHeight; y++) {
+                for (let x = 0; x <= this.boardWidth - pieceWidth; x++) {
+                    // Check if this piece can be placed here without overlapping others
+                    const newPiece = {...piece, x, y};
+                    const newState = [...currentState, newPiece];
+                    
+                    if (this.isValidPlacement(newState, newPiece)) {
+                        generateCombinations(pieceIndex + 1, newState);
+                    }
+                }
+            }
+        };
+        
+        // Start with empty state and build up
+        generateCombinations(0, []);
+        
+        // Create edges based on single-move transitions between any states
+        this.allCombinationsGraph = new Map();
+        const stateArray = Array.from(allStates);
+        
+        // Create bidirectional edges for single moves
+        for (let i = 0; i < stateArray.length; i++) {
+            const stateA = stateArray[i];
+            const piecesA = this.getPiecesFromStateString(stateA);
+            
+            for (let j = 0; j < stateArray.length; j++) {
+                if (i === j) continue;
+                
+                const stateB = stateArray[j];
+                const piecesB = this.getPiecesFromStateString(stateB);
+                
+                // Check if these states differ by exactly one move
+                if (this.areStatesSingleMoveApart(piecesA, piecesB)) {
+                    if (!this.allCombinationsGraph.has(stateA)) {
+                        this.allCombinationsGraph.set(stateA, []);
+                    }
+                    this.allCombinationsGraph.get(stateA).push(stateB);
+                }
+            }
+        }
+        
+        // Use the all combinations data
+        this.currentStates = allStates;
+        this.currentGraph = this.allCombinationsGraph;
+        
+        this.showingUnreachableOnly = false;
+        this.toggleUnreachableBtn.textContent = 'Show Unreachable States';
+        
+        this.render3DStateSpace();
+        this.stateCount.textContent = allStates.size;
+    }
+
+    isValidPlacement(state, newPiece) {
+        // Check if new piece is within bounds
+        if (newPiece.isCustom) {
+            for (const cell of newPiece.cells) {
+                const px = newPiece.x + cell.x;
+                const py = newPiece.y + cell.y;
+                if (px < 0 || py < 0 || px >= this.boardWidth || py >= this.boardHeight) {
+                    return false;
+                }
+            }
+        } else {
+            if (newPiece.x < 0 || newPiece.y < 0 || 
+                newPiece.x + newPiece.width > this.boardWidth || 
+                newPiece.y + newPiece.height > this.boardHeight) {
+                return false;
+            }
+        }
+        
+        // Check for overlaps with existing pieces
+        for (const existingPiece of state) {
+            if (existingPiece === newPiece) continue;
+            
+            // Check overlap
+            if (this.piecesOverlap(existingPiece, newPiece)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    piecesOverlap(pieceA, pieceB) {
+        // Handle custom pieces
+        if (pieceA.isCustom || pieceB.isCustom) {
+            const cellsA = pieceA.isCustom ? pieceA.cells : this.getRectangularCells(pieceA);
+            const cellsB = pieceB.isCustom ? pieceB.cells : this.getRectangularCells(pieceB);
+            
+            const baseA = { x: pieceA.x, y: pieceA.y };
+            const baseB = { x: pieceB.x, y: pieceB.y };
+            
+            for (const cellA of cellsA) {
+                const ax = baseA.x + cellA.x;
+                const ay = baseA.y + cellA.y;
+                
+                for (const cellB of cellsB) {
+                    const bx = baseB.x + cellB.x;
+                    const by = baseB.y + cellB.y;
+                    
+                    if (ax === bx && ay === by) return true;
+                }
+            }
+            return false;
+        }
+        
+        // Both rectangular pieces
+        return !(pieceA.x + pieceA.width <= pieceB.x ||
+                pieceB.x + pieceB.width <= pieceA.x ||
+                pieceA.y + pieceA.height <= pieceB.y ||
+                pieceB.y + pieceB.height <= pieceA.y);
+    }
+    
+    // Helper method to get cells for rectangular pieces
+    getRectangularCells(piece) {
+        const cells = [];
+        for (let y = 0; y < piece.height; y++) {
+            for (let x = 0; x < piece.width; x++) {
+                cells.push({ x, y });
+            }
+        }
+        return cells;
+    }
+    
+    areStatesSingleMoveApart(piecesA, piecesB) {
+        // Check if two states differ by exactly one piece moving one space
+        if (piecesA.length !== piecesB.length) return false;
+        
+        let differences = 0;
+        let movedPieceIndex = -1;
+        
+        for (let i = 0; i < piecesA.length; i++) {
+            const pieceA = piecesA[i];
+            const pieceB = piecesB[i];
+            
+            if (pieceA.x !== pieceB.x || pieceA.y !== pieceB.y) {
+                differences++;
+                movedPieceIndex = i;
+            }
+        }
+        
+        if (differences !== 1) return false;
+        
+        // Check if the move is valid (single step)
+        const pieceA = piecesA[movedPieceIndex];
+        const pieceB = piecesB[movedPieceIndex];
+        
+        const dx = Math.abs(pieceA.x - pieceB.x);
+        const dy = Math.abs(pieceA.y - pieceB.y);
+        
+        return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
+    }
+
     setupDrawingCanvas() {
         const ctx = this.drawingCanvas.getContext('2d');
         this.drawingContext = ctx;
@@ -97,7 +318,7 @@ class KlotskiPuzzle {
     
     startDrawingCustomShape() {
         this.drawingMode = true;
-        this.drawingCanvas.style.display = 'block';
+        this.drawingCanvas.style.display = 'none'; // Hide overlay canvas
         this.drawingControls.style.display = 'flex';
         this.drawCustomShapeBtn.style.display = 'none';
         
@@ -106,6 +327,64 @@ class KlotskiPuzzle {
         this.addPiece1x2Btn.style.display = 'none';
         this.addPiece2x1Btn.style.display = 'none';
         this.addPiece2x2Btn.style.display = 'none';
+        
+        // Add drawing event listeners to the grid cells
+        this.setupGridDrawing();
+    }
+    
+    setupGridDrawing() {
+        const cells = this.puzzleBoard.querySelectorAll('.board-cell');
+        this.drawnCells = new Set();
+        
+        cells.forEach(cell => {
+            cell.addEventListener('mousedown', (e) => this.startGridDrawing(e));
+            cell.addEventListener('mouseenter', (e) => this.drawGridCell(e));
+            cell.addEventListener('mouseup', () => this.stopGridDrawing());
+        });
+    }
+    
+    startGridDrawing(e) {
+        if (!this.drawingMode) return;
+        
+        const cell = e.target;
+        const index = parseInt(cell.dataset.index);
+        const x = index % this.boardWidth;
+        const y = Math.floor(index / this.boardWidth);
+        const cellKey = `${x},${y}`;
+        
+        this.isDrawing = true;
+        this.drawnCells.clear();
+        
+        // Toggle the cell
+        if (this.drawnCells.has(cellKey)) {
+            this.drawnCells.delete(cellKey);
+            cell.style.backgroundColor = '';
+            cell.classList.remove('drawing');
+        } else {
+            this.drawnCells.add(cellKey);
+            cell.style.backgroundColor = '#007bff';
+            cell.classList.add('drawing');
+        }
+    }
+    
+    drawGridCell(e) {
+        if (!this.isDrawing || !this.drawingMode) return;
+        
+        const cell = e.target;
+        const index = parseInt(cell.dataset.index);
+        const x = index % this.boardWidth;
+        const y = Math.floor(index / this.boardWidth);
+        const cellKey = `${x},${y}`;
+        
+        if (!this.drawnCells.has(cellKey)) {
+            this.drawnCells.add(cellKey);
+            cell.style.backgroundColor = '#007bff';
+            cell.classList.add('drawing');
+        }
+    }
+    
+    stopGridDrawing() {
+        this.isDrawing = false;
     }
     
     startDrawing(e) {
@@ -150,7 +429,10 @@ class KlotskiPuzzle {
     }
     
     finishCustomShape() {
-        if (this.drawnCells.size === 0) return;
+        if (this.drawnCells.size === 0) {
+            alert('Please draw a shape on the grid first!');
+            return;
+        }
         
         // Convert drawn cells to piece coordinates
         const cells = Array.from(this.drawnCells).map(cell => {
@@ -175,7 +457,8 @@ class KlotskiPuzzle {
                 if (this.drawnCells.has(cellKey)) {
                     const occupied = this.pieces.find(p => 
                         px >= p.x && px < p.x + p.width &&
-                        py >= p.y && py < p.y + p.height
+                        py >= p.y && py < p.y + p.height &&
+                        (!p.isCustom || this.isCellInCustomPiece(px - p.x, py - p.y, p))
                     );
                     if (occupied) {
                         canPlace = false;
@@ -221,7 +504,114 @@ class KlotskiPuzzle {
         this.addPiece2x1Btn.style.display = 'inline-block';
         this.addPiece2x2Btn.style.display = 'inline-block';
         
-        this.drawingContext.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
+        // Clear drawing cells
+        const cells = this.puzzleBoard.querySelectorAll('.board-cell');
+        cells.forEach(cell => {
+            cell.style.backgroundColor = '';
+            cell.classList.remove('drawing');
+            cell.replaceWith(cell.cloneNode(true)); // Remove event listeners
+        });
+        
+        this.drawnCells = new Set();
+    }
+    
+    addRandomCustomShape() {
+        if (this.pieces.length === 0) {
+            // No pieces yet, add a simple shape to start
+            this.addPiece(1, 1);
+            return;
+        }
+
+        // Generate random custom shapes until we find one that fits
+        const maxAttempts = 50;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // Random shape properties
+            const maxWidth = Math.min(4, this.boardWidth);
+            const maxHeight = Math.min(4, this.boardHeight);
+            const shapeWidth = Math.floor(Math.random() * maxWidth) + 1;
+            const shapeHeight = Math.floor(Math.random() * maxHeight) + 1;
+            
+            // Generate random cells for the shape
+            const cells = [];
+            const cellCount = Math.floor(Math.random() * (shapeWidth * shapeHeight)) + 1;
+            
+            // Ensure we don't exceed dimensions
+            const actualWidth = Math.min(shapeWidth, this.boardWidth);
+            const actualHeight = Math.min(shapeHeight, this.boardHeight);
+            
+            // Create shape cells
+            const usedCells = new Set();
+            for (let i = 0; i < cellCount && usedCells.size < actualWidth * actualHeight; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * actualWidth);
+                    y = Math.floor(Math.random() * actualHeight);
+                } while (usedCells.has(`${x},${y}`));
+                
+                usedCells.add(`${x},${y}`);
+                cells.push({ x, y });
+            }
+            
+            if (cells.length === 0) continue;
+            
+            // Find a position for this shape
+            const maxX = this.boardWidth - actualWidth;
+            const maxY = this.boardHeight - actualHeight;
+            
+            // Try random positions
+            const positionAttempts = 20;
+            for (let posAttempt = 0; posAttempt < positionAttempts; posAttempt++) {
+                const x = Math.floor(Math.random() * (maxX + 1));
+                const y = Math.floor(Math.random() * (maxY + 1));
+                
+                // Check if this position works
+                const testPiece = {
+                    id: this.nextPieceId,
+                    x: x,
+                    y: y,
+                    width: actualWidth,
+                    height: actualHeight,
+                    cells: cells,
+                    isCustom: true
+                };
+                
+                // Check if we can place this piece
+                const testState = [...this.pieces, testPiece];
+                let canPlace = true;
+                
+                for (const cell of cells) {
+                    const px = x + cell.x;
+                    const py = y + cell.y;
+                    
+                    // Check bounds
+                    if (px < 0 || py < 0 || px >= this.boardWidth || py >= this.boardHeight) {
+                        canPlace = false;
+                        break;
+                    }
+                    
+                    // Check overlap with existing pieces
+                    for (const existingPiece of this.pieces) {
+                        if (this.piecesOverlap(existingPiece, testPiece)) {
+                            canPlace = false;
+                            break;
+                        }
+                    }
+                    
+                    if (!canPlace) break;
+                }
+                
+                if (canPlace) {
+                    // Found a valid position, add the piece
+                    this.pieces.push(testPiece);
+                    this.nextPieceId++;
+                    this.renderBoard();
+                    this.updatePieceCount();
+                    return;
+                }
+            }
+        }
+        
+        alert('No space for a random custom shape!');
     }
     
     initializeThreeJS() {
@@ -274,6 +664,8 @@ class KlotskiPuzzle {
     
     createEmptyBoard() {
         this.puzzleBoard.innerHTML = '';
+        this.puzzleBoard.style.gridTemplateColumns = `repeat(${this.boardWidth}, 60px)`;
+        this.puzzleBoard.style.gridTemplateRows = `repeat(${this.boardHeight}, 60px)`;
         for (let i = 0; i < this.boardWidth * this.boardHeight; i++) {
             const cell = document.createElement('div');
             cell.className = 'board-cell';
@@ -333,7 +725,7 @@ class KlotskiPuzzle {
         // Clear board
         const cells = this.puzzleBoard.querySelectorAll('.board-cell');
         cells.forEach(cell => {
-            cell.classList.remove('occupied');
+            cell.classList.remove('occupied', 'drawing');
             cell.style.backgroundColor = '';
             cell.innerHTML = '';
         });
@@ -500,6 +892,13 @@ class KlotskiPuzzle {
             }
         }
         
+        // Update to use current graph and states
+        this.currentStates = this.states;
+        this.currentGraph = this.stateGraph;
+        
+        this.showingUnreachableOnly = false;
+        this.toggleUnreachableBtn.textContent = 'Show Unreachable States';
+        
         this.render3DStateSpace();
         this.stateCount.textContent = this.states.size;
     }
@@ -579,11 +978,22 @@ class KlotskiPuzzle {
     render3DStateSpace() {
         this.clearStateSpace();
         
-        if (this.states.size === 0) return;
+        if (this.currentStates.size === 0) return;
+        
+        const statesToShow = this.showingUnreachableOnly 
+            ? this.calculateUnreachableStates() 
+            : Array.from(this.currentStates || this.states);
+            
+        if (statesToShow.length === 0) {
+            if (this.showingUnreachableOnly) {
+                alert('No unreachable states found!');
+            }
+            return;
+        }
         
         // Create nodes
         const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
-        const stateArray = Array.from(this.states);
+        const stateArray = statesToShow;
         const nodePositions = new Map();
         
         // Store state mappings for click handling
@@ -624,7 +1034,7 @@ class KlotskiPuzzle {
         const edgeGeometry = new THREE.BufferGeometry();
         const edgeVertices = [];
         
-        for (const [fromState, toStates] of this.stateGraph.entries()) {
+        for (const [fromState, toStates] of this.currentGraph.entries()) {
             const fromPos = nodePositions.get(fromState);
             if (!fromPos) continue;
             
@@ -653,6 +1063,33 @@ class KlotskiPuzzle {
         this.renderer.domElement.addEventListener('click', (e) => this.onNodeClick(e));
     }
     
+    calculateUnreachableStates() {
+        const allStates = Array.from(this.states);
+        const reachableStates = new Set();
+        
+        // Start from initial state
+        const initialState = this.getStateStringFromPieces(this.pieces.map(p => ({...p})));
+        const queue = [initialState];
+        const visited = new Set([initialState]);
+        
+        // BFS to find all reachable states
+        while (queue.length > 0) {
+            const currentState = queue.shift();
+            const edges = this.stateGraph.get(currentState) || [];
+            
+            for (const nextState of edges) {
+                if (!visited.has(nextState)) {
+                    visited.add(nextState);
+                    queue.push(nextState);
+                }
+            }
+        }
+        
+        // Find unreachable states
+        const unreachable = allStates.filter(state => !visited.has(state));
+        return unreachable;
+    }
+    
     calculateDistanceMatrix(states) {
         const matrix = new Map();
         
@@ -665,22 +1102,22 @@ class KlotskiPuzzle {
                 const stateB = states[j];
                 const piecesB = this.getPiecesFromStateString(stateB);
                 
-                // Calculate Manhattan distance between corresponding pieces
+                // More stable distance calculation
                 let totalDistance = 0;
-                const pieceCount = Math.min(piecesA.length, piecesB.length);
+                const maxPieces = Math.max(piecesA.length, piecesB.length);
                 
-                for (let k = 0; k < pieceCount; k++) {
-                    const pieceA = piecesA[k];
-                    const pieceB = piecesB[k];
+                for (let k = 0; k < maxPieces; k++) {
+                    const pieceA = piecesA[k] || { x: -100, y: -100 };
+                    const pieceB = piecesB[k] || { x: -100, y: -100 };
                     
-                    if (pieceA && pieceB) {
-                        const dx = Math.abs(pieceA.x - pieceB.x);
-                        const dy = Math.abs(pieceA.y - pieceB.y);
-                        totalDistance += dx + dy;
-                    }
+                    const dx = Math.abs(pieceA.x - pieceB.x);
+                    const dy = Math.abs(pieceA.y - pieceB.y);
+                    totalDistance += dx + dy;
                 }
                 
-                matrix.get(stateA).set(stateB, totalDistance);
+                // Normalize distance to prevent extreme values
+                const normalizedDistance = Math.min(totalDistance / 10, 15);
+                matrix.get(stateA).set(stateB, normalizedDistance);
             }
         }
         
@@ -689,23 +1126,31 @@ class KlotskiPuzzle {
     
     forceDirectedLayout(states, distanceMatrix) {
         const positions = new Map();
-        const iterations = 100;
-        const repulsionStrength = 5;
-        const attractionStrength = 0.1;
-        const damping = 0.95;
+        const iterations = 50; // Reduced iterations for faster convergence
+        const repulsionStrength = 8; // Increased for better separation
+        const attractionStrength = 0.05; // Reduced for smoother movement
+        const damping = 0.92; // Slightly more damping
         
-        // Initialize random positions
+        // Initialize positions in a more stable spiral pattern instead of random
+        const goldenRatio = (1 + Math.sqrt(5)) / 2;
+        const angleIncrement = Math.PI * 2 * goldenRatio;
+        
         states.forEach((state, index) => {
+            const t = index / Math.max(states.length - 1, 1);
+            const radius = 20 + t * 30; // Gradual expansion
+            const angle = t * angleIncrement;
+            
             positions.set(state, {
-                x: (Math.random() - 0.5) * 100,
-                y: (Math.random() - 0.5) * 100,
-                z: (Math.random() - 0.5) * 100
+                x: Math.cos(angle) * radius,
+                y: Math.sin(angle) * radius,
+                z: (t - 0.5) * 10 // Slight z variation
             });
         });
         
-        // Force-directed layout
+        // Force-directed layout with better convergence
         for (let iter = 0; iter < iterations; iter++) {
             const forces = new Map();
+            const centerX = 0, centerY = 0, centerZ = 0;
             
             // Initialize forces
             states.forEach(state => {
@@ -728,22 +1173,19 @@ class KlotskiPuzzle {
                     const dz = posA.z - posB.z;
                     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
                     
-                    const repulsion = repulsionStrength / (distance * distance);
+                    // Smoother repulsion with distance cap
+                    const cappedDistance = Math.max(distance, 5);
+                    const repulsion = repulsionStrength / (cappedDistance * cappedDistance);
                     
                     const force = forces.get(stateA);
                     force.x += dx / distance * repulsion;
                     force.y += dy / distance * repulsion;
                     force.z += dz / distance * repulsion;
-                    
-                    const forceB = forces.get(stateB);
-                    forceB.x -= dx / distance * repulsion;
-                    forceB.y -= dy / distance * repulsion;
-                    forceB.z -= dz / distance * repulsion;
                 }
             }
             
             // Calculate attraction based on distance matrix
-            for (const [fromState, toStates] of this.stateGraph.entries()) {
+            for (const [fromState, toStates] of this.currentGraph.entries()) {
                 const fromPos = positions.get(fromState);
                 const fromForce = forces.get(fromState);
                 
@@ -758,6 +1200,7 @@ class KlotskiPuzzle {
                         Math.pow(fromPos.z - toPos.z, 2)
                     );
                     
+                    // Smoother spring force
                     const springForce = attractionStrength * (actualDistance - expectedDistance);
                     
                     const dx = fromPos.x - toPos.x;
@@ -765,21 +1208,45 @@ class KlotskiPuzzle {
                     const dz = fromPos.z - toPos.z;
                     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
                     
-                    fromForce.x -= dx / distance * springForce;
-                    fromForce.y -= dy / distance * springForce;
-                    fromForce.z -= dz / distance * springForce;
+                    const forceMagnitude = springForce;
                     
-                    toForce.x += dx / distance * springForce;
-                    toForce.y += dy / distance * springForce;
-                    toForce.z += dz / distance * springForce;
+                    fromForce.x -= dx / distance * forceMagnitude;
+                    fromForce.y -= dy / distance * forceMagnitude;
+                    fromForce.z -= dz / distance * forceMagnitude;
+                    
+                    toForce.x += dx / distance * forceMagnitude;
+                    toForce.y += dy / distance * forceMagnitude;
+                    toForce.z += dz / distance * forceMagnitude;
                 }
             }
             
-            // Apply forces with damping
+            // Apply forces with center of mass adjustment
+            let totalMass = 0;
+            let massX = 0, massY = 0, massZ = 0;
+            
+            states.forEach(state => {
+                const pos = positions.get(state);
+                massX += pos.x;
+                massY += pos.y;
+                massZ += pos.z;
+                totalMass++;
+            });
+            
+            const centerForceX = massX / totalMass;
+            const centerForceY = massY / totalMass;
+            const centerForceZ = massZ / totalMass;
+            
+            // Apply forces with damping and centering
             states.forEach(state => {
                 const pos = positions.get(state);
                 const force = forces.get(state);
                 
+                // Add centering force
+                force.x -= (pos.x - centerForceX) * 0.01;
+                force.y -= (pos.y - centerForceY) * 0.01;
+                force.z -= (pos.z - centerForceZ) * 0.01;
+                
+                // Apply with damping
                 pos.x += force.x * damping;
                 pos.y += force.y * damping;
                 pos.z += force.z * damping;
@@ -939,6 +1406,30 @@ class KlotskiPuzzle {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+    }
+    
+    applyBoardSize() {
+        const newWidth = parseInt(this.boardWidthInput.value);
+        const newHeight = parseInt(this.boardHeightInput.value);
+        
+        if (newWidth < 3 || newHeight < 3 || newWidth > 8 || newHeight > 8) {
+            alert('Board dimensions must be between 3x3 and 8x8');
+            return;
+        }
+        
+        this.boardWidth = newWidth;
+        this.boardHeight = newHeight;
+        
+        // Clear existing puzzle and regenerate
+        this.pieces = [];
+        this.nextPieceId = 1;
+        this.states.clear();
+        this.stateGraph.clear();
+        this.clearStateSpace();
+        
+        this.createEmptyBoard();
+        this.renderBoard();
+        this.updatePieceCount();
     }
 }
 
