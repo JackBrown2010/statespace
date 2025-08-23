@@ -22,12 +22,19 @@
                     <button id="add-piece-1x2" class="btn">Add 1x2</button>
                     <button id="add-piece-2x1" class="btn">Add 2x1</button>
                     <button id="add-piece-2x2" class="btn">Add 2x2</button>
+                    <button id="draw-custom-shape" class="btn">Draw Custom</button>
                     <button id="clear-board" class="btn btn-danger">Clear</button>
                     <button id="generate-space" class="btn btn-primary">Generate 3D Space</button>
                 </div>
                 
                 <div class="board-container">
                     <div id="puzzle-board" class="puzzle-board"></div>
+                    <canvas id="drawing-canvas" class="drawing-canvas" style="display: none;"></canvas>
+                </div>
+                
+                <div class="drawing-controls" style="display: none;">
+                    <button id="finish-shape" class="btn btn-primary">Finish Shape</button>
+                    <button id="cancel-shape" class="btn btn-danger">Cancel</button>
                 </div>
                 
                 <div class="info">
