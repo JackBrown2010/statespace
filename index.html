@@ -18,6 +18,13 @@
             <div class="puzzle-panel">
                 <h2>Design Your Puzzle</h2>
                 <div class="controls">
+                    <div class="board-size-controls">
+                        <label for="board-width">Board Width:</label>
+                        <input type="number" id="board-width" min="3" max="8" value="4">
+                        <label for="board-height">Board Height:</label>
+                        <input type="number" id="board-height" min="3" max="8" value="5">
+                        <button id="apply-board-size" class="btn">Apply Size</button>
+                    </div>
                     <button id="add-piece-1x1" class="btn">Add 1x1</button>
                     <button id="add-piece-1x2" class="btn">Add 1x2</button>
                     <button id="add-piece-2x1" class="btn">Add 2x1</button>
@@ -47,6 +54,8 @@
                 <h2>3D State Space</h2>
                 <div id="three-container" class="three-container"></div>
                 <div class="space-controls">
+                    <button id="toggle-unreachable" class="btn">Show Unreachable States</button>
+                    <button id="toggle-all-combinations" class="btn">Show All Combinations</button>
                     <button id="auto-rotate" class="btn">Auto Rotate</button>
                     <div class="slider-group">
                         <label>Node Size: <span id="node-size-value">1</span></label>
