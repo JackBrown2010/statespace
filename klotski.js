@@ -20,17 +20,24 @@ class KlotskiPuzzle {
         this.addPiece1x2Btn = document.getElementById('add-piece-1x2');
         this.addPiece2x1Btn = document.getElementById('add-piece-2x1');
         this.addPiece2x2Btn = document.getElementById('add-piece-2x2');
+        this.drawCustomShapeBtn = document.getElementById('draw-custom-shape');
         this.clearBoardBtn = document.getElementById('clear-board');
         this.generateSpaceBtn = document.getElementById('generate-space');
         this.autoRotateBtn = document.getElementById('auto-rotate');
         this.nodeSizeSlider = document.getElementById('node-size');
         this.nodeSizeValue = document.getElementById('node-size-value');
         
+        this.finishShapeBtn = document.getElementById('finish-shape');
+        this.cancelShapeBtn = document.getElementById('cancel-shape');
+        
         this.puzzleBoard = document.getElementById('puzzle-board');
+        this.drawingCanvas = document.getElementById('drawing-canvas');
+        this.drawingControls = document.querySelector('.drawing-controls');
         this.pieceCount = document.getElementById('piece-count');
         this.stateCount = document.getElementById('state-count');
         
         this.setupEventListeners();
+        this.setupDrawingCanvas();
     }
     
     setupEventListeners() {
@@ -38,15 +45,183 @@ class KlotskiPuzzle {
         this.addPiece1x2Btn.addEventListener('click', () => this.addPiece(1, 2));
         this.addPiece2x1Btn.addEventListener('click', () => this.addPiece(2, 1));
         this.addPiece2x2Btn.addEventListener('click', () => this.addPiece(2, 2));
+        this.drawCustomShapeBtn.addEventListener('click', () => this.startDrawingCustomShape());
         this.clearBoardBtn.addEventListener('click', () => this.clearBoard());
         this.generateSpaceBtn.addEventListener('click', () => this.generateStateSpace());
         this.autoRotateBtn.addEventListener('click', () => this.toggleAutoRotate());
+        
+        this.finishShapeBtn.addEventListener('click', () => this.finishCustomShape());
+        this.cancelShapeBtn.addEventListener('click', () => this.cancelCustomShape());
         
         this.nodeSizeSlider.addEventListener('input', (e) => {
             const value = e.target.value;
             this.nodeSizeValue.textContent = value;
             this.updateNodeSizes(parseFloat(value));
         });
+    }
+    
+    setupDrawingCanvas() {
+        const ctx = this.drawingCanvas.getContext('2d');
+        this.drawingContext = ctx;
+        
+        // Set canvas size to match puzzle board grid
+        const resizeCanvas = () => {
+            const rect = this.puzzleBoard.getBoundingClientRect();
+            const computedStyle = window.getComputedStyle(this.puzzleBoard);
+            const gap = parseFloat(computedStyle.gap) || 2;
+            const cols = this.boardWidth;
+            const rows = this.boardHeight;
+            const cellSize = 60; // Match grid cell size
+            
+            this.drawingCanvas.width = rect.width;
+            this.drawingCanvas.height = rect.height;
+            this.drawingCanvas.style.width = rect.width + 'px';
+            this.drawingCanvas.style.height = rect.height + 'px';
+            
+            // Calculate actual cell dimensions including gap
+            this.cellWidth = cellSize + (gap * (cols - 1)) / cols;
+            this.cellHeight = cellSize + (gap * (rows - 1)) / rows;
+        };
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Drawing variables
+        this.isDrawing = false;
+        this.drawnCells = new Set();
+        
+        this.drawingCanvas.addEventListener('mousedown', (e) => this.startDrawing(e));
+        this.drawingCanvas.addEventListener('mousemove', (e) => this.draw(e));
+        this.drawingCanvas.addEventListener('mouseup', () => this.stopDrawing());
+    }
+    
+    startDrawingCustomShape() {
+        this.drawingMode = true;
+        this.drawingCanvas.style.display = 'block';
+        this.drawingControls.style.display = 'flex';
+        this.drawCustomShapeBtn.style.display = 'none';
+        
+        // Hide regular piece buttons
+        this.addPiece1x1Btn.style.display = 'none';
+        this.addPiece1x2Btn.style.display = 'none';
+        this.addPiece2x1Btn.style.display = 'none';
+        this.addPiece2x2Btn.style.display = 'none';
+    }
+    
+    startDrawing(e) {
+        if (!this.drawingMode) return;
+        
+        const rect = this.drawingCanvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / this.cellWidth);
+        const y = Math.floor((e.clientY - rect.top) / this.cellHeight);
+        
+        this.isDrawing = true;
+        this.drawnCells.clear();
+        this.drawingContext.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
+    }
+    
+    draw(e) {
+        if (!this.isDrawing || !this.drawingMode) return;
+        
+        const rect = this.drawingCanvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / this.cellWidth);
+        const y = Math.floor((e.clientY - rect.top) / this.cellHeight);
+        
+        if (x >= 0 && x < this.boardWidth && y >= 0 && y < this.boardHeight) {
+            const cellKey = `${x},${y}`;
+            if (!this.drawnCells.has(cellKey)) {
+                this.drawnCells.add(cellKey);
+                
+                // Calculate precise cell position accounting for gaps
+                const cellX = x * this.cellWidth + 1;
+                const cellY = y * this.cellHeight + 1;
+                const cellW = this.cellWidth - 2;
+                const cellH = this.cellHeight - 2;
+                
+                // Visual feedback with grid alignment
+                this.drawingContext.fillStyle = '#007bff';
+                this.drawingContext.fillRect(cellX, cellY, cellW, cellH);
+            }
+        }
+    }
+    
+    stopDrawing() {
+        this.isDrawing = false;
+    }
+    
+    finishCustomShape() {
+        if (this.drawnCells.size === 0) return;
+        
+        // Convert drawn cells to piece coordinates
+        const cells = Array.from(this.drawnCells).map(cell => {
+            const [x, y] = cell.split(',').map(Number);
+            return { x, y };
+        });
+        
+        // Find bounding box
+        const minX = Math.min(...cells.map(c => c.x));
+        const maxX = Math.max(...cells.map(c => c.x));
+        const minY = Math.min(...cells.map(c => c.y));
+        const maxY = Math.max(...cells.map(c => c.y));
+        
+        const width = maxX - minX + 1;
+        const height = maxY - minY + 1;
+        
+        // Check if we can place this piece
+        let canPlace = true;
+        for (let py = minY; py <= maxY; py++) {
+            for (let px = minX; px <= maxX; px++) {
+                const cellKey = `${px},${py}`;
+                if (this.drawnCells.has(cellKey)) {
+                    const occupied = this.pieces.find(p => 
+                        px >= p.x && px < p.x + p.width &&
+                        py >= p.y && py < p.y + p.height
+                    );
+                    if (occupied) {
+                        canPlace = false;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (canPlace) {
+            const piece = {
+                id: this.nextPieceId++,
+                x: minX,
+                y: minY,
+                width: width,
+                height: height,
+                cells: cells.map(c => ({
+                    x: c.x - minX,
+                    y: c.y - minY
+                })),
+                isCustom: true
+            };
+            
+            this.pieces.push(piece);
+            this.renderBoard();
+            this.updatePieceCount();
+        } else {
+            alert('Cannot place custom shape — overlaps with existing pieces!');
+        }
+        
+        this.cancelCustomShape();
+    }
+    
+    cancelCustomShape() {
+        this.drawingMode = false;
+        this.drawingCanvas.style.display = 'none';
+        this.drawingControls.style.display = 'none';
+        this.drawCustomShapeBtn.style.display = 'inline-block';
+        
+        // Show regular piece buttons
+        this.addPiece1x1Btn.style.display = 'inline-block';
+        this.addPiece1x2Btn.style.display = 'inline-block';
+        this.addPiece2x1Btn.style.display = 'inline-block';
+        this.addPiece2x2Btn.style.display = 'inline-block';
+        
+        this.drawingContext.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
     }
     
     initializeThreeJS() {
@@ -127,6 +302,11 @@ class KlotskiPuzzle {
     }
     
     canPlacePiece(x, y, width, height, excludeId = null) {
+        // Handle custom pieces
+        const excludePieces = this.pieces.filter(p => p.id === excludeId);
+        const customPieces = excludePieces.filter(p => p.isCustom);
+        
+        // Regular collision detection for non-custom pieces
         if (x < 0 || y < 0 || x + width > this.boardWidth || y + height > this.boardHeight) {
             return false;
         }
@@ -136,7 +316,8 @@ class KlotskiPuzzle {
                 const occupied = this.pieces.find(p => 
                     p.id !== excludeId &&
                     px >= p.x && px < p.x + p.width &&
-                    py >= p.y && py < p.y + p.height
+                    py >= p.y && py < p.y + p.height &&
+                    (!p.isCustom || this.isCellInCustomPiece(px - p.x, py - p.y, p))
                 );
                 if (occupied) return false;
             }
@@ -144,37 +325,45 @@ class KlotskiPuzzle {
         return true;
     }
     
+    isCellInCustomPiece(x, y, piece) {
+        return piece.cells.some(cell => cell.x === x && cell.y === y);
+    }
+    
     renderBoard() {
         // Clear board
         const cells = this.puzzleBoard.querySelectorAll('.board-cell');
         cells.forEach(cell => {
             cell.classList.remove('occupied');
+            cell.style.backgroundColor = '';
             cell.innerHTML = '';
         });
         
-        // Render pieces
-        this.pieces.forEach(piece => {
-            const pieceElement = document.createElement('div');
-            pieceElement.className = 'puzzle-piece';
-            pieceElement.style.left = `${piece.x * 62}px`;
-            pieceElement.style.top = `${piece.y * 62}px`;
-            pieceElement.style.width = `${piece.width * 60 + (piece.width - 1) * 2}px`;
-            pieceElement.style.height = `${piece.height * 60 + (piece.height - 1) * 2}px`;
-            pieceElement.textContent = `${piece.width}x${piece.height}`;
-            pieceElement.dataset.pieceId = piece.id;
+        // Render pieces as colored grid cells
+        this.pieces.forEach((piece, index) => {
+            const hue = (index * 137.5) % 360; // Golden angle for good color distribution
+            const color = `hsl(${hue}, 70%, 60%)`;
             
-            pieceElement.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.removePiece(piece.id);
-            });
-            
-            this.puzzleBoard.appendChild(pieceElement);
-            
-            // Mark cells as occupied
-            for (let py = piece.y; py < piece.y + piece.height; py++) {
-                for (let px = piece.x; px < piece.x + piece.width; px++) {
-                    const cellIndex = py * this.boardWidth + px;
-                    cells[cellIndex].classList.add('occupied');
+            if (piece.isCustom) {
+                // Handle custom pieces
+                for (const cell of piece.cells) {
+                    const actualX = piece.x + cell.x;
+                    const actualY = piece.y + cell.y;
+                    const cellIndex = actualY * this.boardWidth + actualX;
+                    if (cells[cellIndex]) {
+                        cells[cellIndex].classList.add('occupied');
+                        cells[cellIndex].style.backgroundColor = color;
+                    }
+                }
+            } else {
+                // Handle regular pieces
+                for (let py = piece.y; py < piece.y + piece.height; py++) {
+                    for (let px = piece.x; px < piece.x + piece.width; px++) {
+                        const cellIndex = py * this.boardWidth + px;
+                        if (cells[cellIndex]) {
+                            cells[cellIndex].classList.add('occupied');
+                            cells[cellIndex].style.backgroundColor = color;
+                        }
+                    }
                 }
             }
         });
@@ -202,9 +391,23 @@ class KlotskiPuzzle {
     getStateString() {
         const board = Array(this.boardWidth * this.boardHeight).fill(0);
         this.pieces.forEach((piece, index) => {
-            for (let py = piece.y; py < piece.y + piece.height; py++) {
-                for (let px = piece.x; px < piece.x + piece.width; px++) {
-                    board[py * this.boardWidth + px] = index + 1;
+            if (piece.isCustom) {
+                // Handle custom pieces
+                for (const cell of piece.cells) {
+                    const px = piece.x + cell.x;
+                    const py = piece.y + cell.y;
+                    const cellIndex = py * this.boardWidth + px;
+                    if (cellIndex >= 0 && cellIndex < board.length) {
+                        board[cellIndex] = index + 1;
+                    }
+                }
+            } else {
+                // Handle regular pieces
+                for (let py = piece.y; py < piece.y + piece.height; py++) {
+                    for (let px = piece.x; px < piece.x + piece.width; px++) {
+                        const cellIndex = py * this.boardWidth + px;
+                        board[cellIndex] = index + 1;
+                    }
                 }
             }
         });
@@ -303,33 +506,74 @@ class KlotskiPuzzle {
     
     getStateStringFromPieces(pieces) {
         const board = Array(this.boardWidth * this.boardHeight).fill(0);
+        
         pieces.forEach((piece, index) => {
-            for (let py = piece.y; py < piece.y + piece.height; py++) {
-                for (let px = piece.x; px < piece.x + piece.width; px++) {
-                    board[py * this.boardWidth + px] = index + 1;
+            if (piece.isCustom) {
+                // Handle custom pieces
+                for (const cell of piece.cells) {
+                    const px = piece.x + cell.x;
+                    const py = piece.y + cell.y;
+                    const cellIndex = py * this.boardWidth + px;
+                    if (cellIndex >= 0 && cellIndex < board.length) {
+                        board[cellIndex] = index + 1;
+                    }
+                }
+            } else {
+                // Handle regular pieces
+                for (let py = piece.y; py < piece.y + piece.height; py++) {
+                    for (let px = piece.x; px < piece.x + piece.width; px++) {
+                        const cellIndex = py * this.boardWidth + px;
+                        board[cellIndex] = index + 1;
+                    }
                 }
             }
         });
+        
         return board.join(',');
     }
     
     canPlacePieceInState(pieces, pieceIndex, x, y) {
         const piece = pieces[pieceIndex];
-        if (x < 0 || y < 0 || x + piece.width > this.boardWidth || y + piece.height > this.boardHeight) {
-            return false;
-        }
         
-        for (let py = y; py < y + piece.height; py++) {
-            for (let px = x; px < x + piece.width; px++) {
+        // Handle custom pieces
+        if (piece.isCustom) {
+            // Check each cell of custom piece
+            for (const cell of piece.cells) {
+                const px = x + cell.x;
+                const py = y + cell.y;
+                
+                if (px < 0 || py < 0 || px >= this.boardWidth || py >= this.boardHeight) {
+                    return false;
+                }
+                
                 const occupied = pieces.find((p, index) => 
                     index !== pieceIndex &&
                     px >= p.x && px < p.x + p.width &&
-                    py >= p.y && py < p.y + p.height
+                    py >= p.y && py < p.y + p.height &&
+                    (!p.isCustom || this.isCellInCustomPiece(px - p.x, py - p.y, p))
                 );
                 if (occupied) return false;
             }
+            return true;
+        } else {
+            // Regular rectangular piece
+            if (x < 0 || y < 0 || x + piece.width > this.boardWidth || y + piece.height > this.boardHeight) {
+                return false;
+            }
+            
+            for (let py = y; py < y + piece.height; py++) {
+                for (let px = x; px < x + piece.width; px++) {
+                    const occupied = pieces.find((p, index) => 
+                        index !== pieceIndex &&
+                        px >= p.x && px < p.x + p.width &&
+                        py >= p.y && py < p.y + p.height &&
+                        (!p.isCustom || this.isCellInCustomPiece(px - p.x, py - p.y, p))
+                    );
+                    if (occupied) return false;
+                }
+            }
+            return true;
         }
-        return true;
     }
     
     render3DStateSpace() {
@@ -560,31 +804,58 @@ class KlotskiPuzzle {
             }
         }
         
-        // Reconstruct pieces from IDs
         const idArray = Array.from(pieceIds).sort((a, b) => a - b);
+        
         idArray.forEach(id => {
-            // Find the bounding box for this piece
-            let minX = this.boardWidth, maxX = 0;
-            let minY = this.boardHeight, maxY = 0;
-            
+            // Collect all cells for this piece
+            const cells = [];
             for (let y = 0; y < this.boardHeight; y++) {
                 for (let x = 0; x < this.boardWidth; x++) {
                     if (board[y * this.boardWidth + x] === id) {
-                        minX = Math.min(minX, x);
-                        maxX = Math.max(maxX, x + 1);
-                        minY = Math.min(minY, y);
-                        maxY = Math.max(maxY, y + 1);
+                        cells.push({ x, y });
                     }
                 }
             }
             
-            pieces.push({
-                id: id - 1,
-                x: minX,
-                y: minY,
-                width: maxX - minX,
-                height: maxY - minY
-            });
+            if (cells.length > 0) {
+                // Determine if this is a regular rectangle or custom shape
+                const minX = Math.min(...cells.map(c => c.x));
+                const maxX = Math.max(...cells.map(c => c.x));
+                const minY = Math.min(...cells.map(c => c.y));
+                const maxY = Math.max(...cells.map(c => c.y));
+                
+                const width = maxX - minX + 1;
+                const height = maxY - minY + 1;
+                
+                // Check if it forms a complete rectangle
+                const expectedCells = width * height;
+                const isRectangle = cells.length === expectedCells;
+                
+                if (isRectangle) {
+                    // Regular rectangular piece
+                    pieces.push({
+                        id: id - 1,
+                        x: minX,
+                        y: minY,
+                        width: width,
+                        height: height
+                    });
+                } else {
+                    // Custom shape
+                    pieces.push({
+                        id: id - 1,
+                        x: minX,
+                        y: minY,
+                        width: width,
+                        height: height,
+                        cells: cells.map(c => ({
+                            x: c.x - minX,
+                            y: c.y - minY
+                        })),
+                        isCustom: true
+                    });
+                }
+            }
         });
         
         return pieces;
