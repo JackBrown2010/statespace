@@ -1,0 +1,206 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Cal Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #ffffff;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+header p {
+    color: #666;
+    font-size: 1.1rem;
+}
+
+.main-content {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 40px;
+}
+
+.puzzle-panel {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 24px;
+    height: fit-content;
+}
+
+.space-panel {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: #222;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    background: #f0f0f0;
+    border-color: #999;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
+.board-container {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.puzzle-board {
+    display: grid;
+    grid-template-columns: repeat(4, 60px);
+    grid-template-rows: repeat(5, 60px);
+    gap: 2px;
+    background: #ddd;
+    padding: 8px;
+    border-radius: 8px;
+}
+
+.board-cell {
+    background: #fff;
+    border-radius: 4px;
+    position: relative;
+    cursor: pointer;
+}
+
+.board-cell.occupied {
+    background: #007bff;
+}
+
+.puzzle-piece {
+    position: absolute;
+    background: #007bff;
+    border-radius: 4px;
+    border: 2px solid #0056b3;
+    cursor: move;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+}
+
+.puzzle-piece.selected {
+    border-color: #ffc107;
+    box-shadow: 0 0 0 2px #ffc107;
+}
+
+.three-container {
+    width: 100%;
+    height: 600px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+}
+
+.space-controls {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.slider-group label {
+    font-size: 14px;
+    color: #666;
+}
+
+.slider-group input {
+    width: 120px;
+}
+
+.info {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+    color: #666;
+    margin-top: 20px;
+}
+
+@media (max-width: 1024px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .puzzle-panel {
+        order: 1;
+    }
+    
+    .space-panel {
+        order: 2;
+    }
+}
+
