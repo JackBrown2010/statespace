@@ -28,27 +28,8 @@ button { margin:0 5px; padding:6px 10px; }
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
-// ======= All your Three.js visualization code goes here =======
-
-const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas3d')});
-renderer.setSize(window.innerWidth, window.innerHeight*0.7);
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111111);
-
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth/(window.innerHeight*0.7), 0.1, 5000);
-camera.position.set(30,30,50);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-
-// ... rest of your 3D visualization logic ...
-</script>
-
-
-<script>
 // =========================
-//  Grid Editor
+// Grid Editor
 // =========================
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
@@ -61,7 +42,6 @@ let currentPieceId = 0;
 
 // Current drawing piece
 let tempSquares = [];
-let drawing = false;
 
 // Draw grid and pieces
 function drawGrid(){
@@ -71,14 +51,12 @@ function drawGrid(){
     ctx.beginPath(); ctx.moveTo(i*CELL,0); ctx.lineTo(i*CELL,canvas.height); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,i*CELL); ctx.lineTo(canvas.width,i*CELL); ctx.stroke();
   }
-  // Draw finalized pieces
   for(const p of pieces){
     ctx.fillStyle=p.color;
     for(const s of p.squares){
       ctx.fillRect(s.x*CELL,s.y*CELL,CELL,CELL);
     }
   }
-  // Draw temp squares
   if(tempSquares.length>0){
     ctx.fillStyle=pieceColors[currentPieceId];
     for(const s of tempSquares){
@@ -94,7 +72,6 @@ canvas.addEventListener('click', e=>{
   const rect = canvas.getBoundingClientRect();
   const mx = Math.floor((e.clientX-rect.left)/CELL);
   const my = Math.floor((e.clientY-rect.top)/CELL);
-  // toggle
   const idx = tempSquares.findIndex(s=>s.x===mx && s.y===my);
   if(idx>=0) tempSquares.splice(idx,1);
   else tempSquares.push({x:mx,y:my});
@@ -112,10 +89,10 @@ document.getElementById('createPieceBtn').addEventListener('click',()=>{
 });
 
 // =========================
-// BFS solver for reachable layouts
+// BFS solver
 // =========================
 function serialize(state){
-  return state.map(p=>p.squares.map(s=>s.x+","+s.y).sort().join(";")).join("|");
+  return state.map(p=>p.squares.map(s=>`${s.x},${s.y}`).sort().join(";")).join("|");
 }
 function cloneState(state){
   return state.map(p=>({id:p.id,squares:p.squares.map(s=>({x:s.x,y:s.y})),color:p.color}));
@@ -168,68 +145,16 @@ function computeAllStates(start){
 }
 
 // =========================
-//  Three.js 3D visualization
+// Three.js visualization
 // =========================
-let renderer,scene,camera,controls;
+let renderer, scene, camera, controls;
+
 function visualize3D(graph){
-  if(renderer) renderer.dispose();
-  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('canvas3d')});
-  renderer.setSize(window.innerWidth,window.innerHeight*0.7);
-  scene=new THREE.Scene(); scene.background=new THREE.Color(0x111111);
-  camera=new THREE.PerspectiveCamera(60,window.innerWidth/(window.innerHeight*0.7),0.1,5000);
-  camera.position.set(30,30,50);
-  controls=new THREE.OrbitControls(camera,renderer.domElement);
-  controls.enableDamping=true;
-  scene.add(new THREE.AmbientLight(0x888888));
-  const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(50,50,50); scene.add(light);
-
-  // Layout states in 3D grid
-  const posMap=new Map();
-  const spacing=4;
-  graph.states.forEach((s,i)=>{
-    const x=(i%20)*spacing;
-    const y=Math.floor(i/400)*spacing;
-    const z=Math.floor(i/20)%20*spacing;
-    posMap.set(serialize(s),new THREE.Vector3(x,y,z));
-    const mesh=new THREE.Mesh(new THREE.SphereGeometry(0.5,12,12),new THREE.MeshStandardMaterial({color:0x3498db}));
-    mesh.position.set(x,y,z);
-    scene.add(mesh);
-  });
-
-  // Edges
-  graph.edges.forEach(([a,b])=>{
-    const p1=posMap.get(a), p2=posMap.get(b);
-    const geom=new THREE.BufferGeometry().setFromPoints([p1,p2]);
-    const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0x555555}));
-    scene.add(line);
-  });
-
-  function animate(){
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene,camera);
-  }
-  animate();
-}
-
-// =========================
-//  Visualize button
-// =========================
-document.getElementById('visualizeBtn').addEventListener('click',()=>{
-  if(pieces.length===0){ alert("Create at least one piece!"); return; }
-
-  console.log("Computing reachable states...");
-  const graph = computeAllStates(pieces);
-  console.log(`Total states: ${graph.states.length}, edges: ${graph.edges.length}`);
-
-  // Clear previous scene if exists
   if(renderer){
-    renderer.forceContextLoss();
-    renderer.domElement = null;
     renderer.dispose();
+    renderer.domElement = null;
   }
 
-  // Initialize Three.js
   renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas3d')});
   renderer.setSize(window.innerWidth, window.innerHeight*0.7);
 
@@ -263,23 +188,30 @@ document.getElementById('visualizeBtn').addEventListener('click',()=>{
     scene.add(mesh);
   });
 
-  // Add edges
+  // Edges
   graph.edges.forEach(([a,b])=>{
     const p1 = posMap.get(a), p2 = posMap.get(b);
     const geom = new THREE.BufferGeometry().setFromPoints([p1,p2]);
-    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({color:0x555555}));
+    const line = new THREE.Line(geom,new THREE.LineBasicMaterial({color:0x555555}));
     scene.add(line);
   });
 
-  // Animate
   function animate(){
     requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene,camera);
   }
   animate();
-});
+}
 
+// Visualize button
+document.getElementById('visualizeBtn').addEventListener('click',()=>{
+  if(pieces.length===0){ alert("Create at least one piece!"); return; }
+  console.log("Computing states...");
+  const graph = computeAllStates(pieces);
+  console.log(`States: ${graph.states.length}, edges: ${graph.edges.length}`);
+  visualize3D(graph);
+});
 </script>
 </body>
 </html>
