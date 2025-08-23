@@ -196,6 +196,32 @@ h2 {
     justify-content: center;
 }
 
+.board-size-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.board-size-controls label {
+    font-size: 14px;
+    color: #666;
+}
+
+.board-size-controls input {
+    width: 60px;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.board-size-controls button {
+    padding: 4px 12px;
+    font-size: 13px;
+}
+
 @media (max-width: 1024px) {
     .main-content {
         grid-template-columns: 1fr;
