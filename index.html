@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Klotski Puzzle with Solver</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #222;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      background: #fff;
+      margin: 20px;
+      border: 3px solid #444;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 15px;
+      border-radius: 8px;
+      border: none;
+      background: #4a6cf7;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #3653c9;
+    }
+  </style>
+</head>
+<body>
+  <h1>Klotski Puzzle</h1>
+  <canvas id="board" width="300" height="360"></canvas>
+  <div>
+    <button id="solveBtn">Solve Puzzle</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+<script>
+/* ---------------- State Representation ---------------- */
+
+// Board is 5 wide x 6 tall
+const COLS = 4;
+const ROWS = 5;
+const SIZE = 70; // pixel size per cell
+const ctx = document.getElementById("board").getContext("2d");
+
+// Block definition: {w,h,color}
+const blockTypes = {
+  A: {w:2,h:2,color:"#e74c3c"}, // big block
+  B: {w:1,h:2,color:"#3498db"},
+  C: {w:2,h:1,color:"#2ecc71"},
+  D: {w:1,h:1,color:"#9b59b6"},
+};
+
+let initialState = {
+  A:[1,0], // big block top-left corner
+  B:[0,0],
+  C:[0,2],
+  D:[3,0],
+  E:[0,4],
+  F:[1,3],
+  G:[2,3],
+  H:[3,4],
+};
+
+let goalState = {
+  ...initialState,
+  A:[1,3], // big block at bottom middle
+};
+
+let state = JSON.parse(JSON.stringify(initialState));
+
+/* ---------------- Rendering ---------------- */
+function drawState(s) {
+  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  for (let block in s) {
+    let [x,y] = s[block];
+    let def = blockTypes[block] || blockTypes.D;
+    let w = def.w*SIZE, h = def.h*SIZE;
+    ctx.fillStyle = def.color;
+    ctx.fillRect(x*SIZE, y*SIZE, w-4, h-4);
+    ctx.fillStyle="#fff";
+    ctx.font="20px Arial";
+    ctx.fillText(block, x*SIZE+w/2-5, y*SIZE+h/2+5);
+  }
+}
+
+/* ---------------- Solver (BFS) ---------------- */
+function serialize(s) {
+  return JSON.stringify(s);
+}
+
+function isGoal(s) {
+  return s.A[0]===goalState.A[0] && s.A[1]===goalState.A[1];
+}
+
+function getNeighbors(s) {
+  let neighbors = [];
+  for (let block in s) {
+    let [x,y] = s[block];
+    let def = blockTypes[block] || blockTypes.D;
+    let moves = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let [dx,dy] of moves) {
+      let nx=x+dx, ny=y+dy;
+      let candidate = {...s};
+      candidate[block]=[nx,ny];
+      if (valid(candidate,block)) neighbors.push(candidate);
+    }
+  }
+  return neighbors;
+}
+
+function valid(s, movedBlock) {
+  // Check inside board
+  for (let block in s) {
+    let [x,y] = s[block];
+    let def = blockTypes[block] || blockTypes.D;
+    if (x<0 || y<0 || x+def.w>COLS || y+def.h>ROWS) return false;
+  }
+  // Check overlaps
+  let occ = Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  for (let block in s) {
+    let [x,y] = s[block];
+    let def = blockTypes[block] || blockTypes.D;
+    for (let i=0;i<def.w;i++) {
+      for (let j=0;j<def.h;j++) {
+        if (occ[y+j][x+i]) return false;
+        occ[y+j][x+i]=block;
+      }
+    }
+  }
+  return true;
+}
+
+function bfsSolve(start) {
+  let queue=[start];
+  let visited=new Set([serialize(start)]);
+  let parent=new Map();
+  while (queue.length) {
+    let cur=queue.shift();
+    if (isGoal(cur)) {
+      let path=[cur];
+      while (parent.has(serialize(cur))) {
+        cur=parent.get(serialize(cur));
+        path.push(cur);
+      }
+      return path.reverse();
+    }
+    for (let n of getNeighbors(cur)) {
+      let key=serialize(n);
+      if (!visited.has(key)) {
+        visited.add(key);
+        parent.set(key,cur);
+        queue.push(n);
+      }
+    }
+  }
+  return null;
+}
+
+/* ---------------- Visualization ---------------- */
+let solution=null;
+let step=0;
+
+document.getElementById("solveBtn").onclick=()=>{
+  solution=bfsSolve(state);
+  step=0;
+  if (solution) {
+    let interval=setInterval(()=>{
+      if (step<solution.length) {
+        drawState(solution[step]);
+        step++;
+      } else clearInterval(interval);
+    },400);
+  } else {
+    alert("No solution found!");
+  }
+};
+
+document.getElementById("resetBtn").onclick=()=>{
+  state=JSON.parse(JSON.stringify(initialState));
+  drawState(state);
+};
+
+/* ---------------- Init ---------------- */
+drawState(state);
+</script>
+</body>
+</html>
