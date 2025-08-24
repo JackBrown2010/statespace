@@ -222,6 +222,36 @@ h2 {
     font-size: 13px;
 }
 
+.superstate-node {
+    position: absolute;
+    background: linear-gradient(135deg, #9c27b0, #673ab7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(156, 39, 176, 0.3);
+}
+
+.superstate-node:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 30px rgba(156, 39, 176, 0.5);
+}
+
+.advanced-panel {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#estimate-status {
+    background: rgba(255,255,255,0.02);
+    border-radius: 6px;
+}
+
 @media (max-width: 1024px) {
     .main-content {
         grid-template-columns: 1fr;
