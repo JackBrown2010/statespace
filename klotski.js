@@ -10,6 +10,10 @@ class KlotskiPuzzle {
         this.states = new Set();
         this.stateGraph = new Map();
         
+        this.showing2DMode = false;
+        this.playerPieces = []; // Track player pieces separately
+        this.showingPlayerMode = false;
+        
         this.initializeDOM();
         this.initializeThreeJS();
         this.createEmptyBoard();
@@ -41,6 +45,18 @@ class KlotskiPuzzle {
         this.drawingControls = document.querySelector('.drawing-controls');
         this.pieceCount = document.getElementById('piece-count');
         this.stateCount = document.getElementById('state-count');
+        
+        this.toggle2DModeBtn = document.createElement('button');
+        this.toggle2DModeBtn.id = 'toggle-2d-mode';
+        this.toggle2DModeBtn.className = 'btn';
+        this.toggle2DModeBtn.textContent = '2D State Space';
+        this.toggle2DModeBtn.addEventListener('click', () => this.toggle2DMode());
+        
+        this.togglePlayerModeBtn = document.createElement('button');
+        this.togglePlayerModeBtn.id = 'toggle-player-mode';
+        this.togglePlayerModeBtn.className = 'btn';
+        this.togglePlayerModeBtn.textContent = 'Player Mode';
+        this.togglePlayerModeBtn.addEventListener('click', () => this.togglePlayerMode());
         
         this.setupEventListeners();
         this.setupDrawingCanvas();
@@ -80,6 +96,11 @@ class KlotskiPuzzle {
         
         this.toggleUnreachableBtn.addEventListener('click', () => this.toggleUnreachableStates());
         this.toggleAllCombinationsBtn.addEventListener('click', () => this.toggleAllCombinations());
+        
+        // Add toggle buttons to space controls
+        const spaceControls = document.querySelector('.space-controls');
+        spaceControls.insertBefore(this.toggle2DModeBtn, spaceControls.firstChild);
+        spaceControls.insertBefore(this.togglePlayerModeBtn, this.toggle2DModeBtn.nextSibling);
     }
     
     toggleUnreachableStates() {
@@ -732,8 +753,13 @@ class KlotskiPuzzle {
         
         // Render pieces as colored grid cells
         this.pieces.forEach((piece, index) => {
-            const hue = (index * 137.5) % 360; // Golden angle for good color distribution
-            const color = `hsl(${hue}, 70%, 60%)`;
+            let color;
+            if (piece.isPlayer) {
+                color = 'hsl(280, 70%, 60%)'; // Purple for player
+            } else {
+                const hue = (index * 137.5) % 360; // Golden angle for good color distribution
+                color = `hsl(${hue}, 70%, 60%)`;
+            }
             
             if (piece.isCustom) {
                 // Handle custom pieces
@@ -816,8 +842,11 @@ class KlotskiPuzzle {
         this.stateGraph.clear();
         this.clearStateSpace();
         
+        // Include player pieces in state generation
+        const allPieces = [...this.pieces];
+        
         // Bfs to find all reachable states
-        const initialState = this.pieces.map(p => ({...p}));
+        const initialState = allPieces.map(p => ({...p}));
         const queue = [initialState];
         const visited = new Set([this.getStateStringFromPieces(initialState)]);
         
@@ -1406,6 +1435,209 @@ class KlotskiPuzzle {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+    }
+    
+    toggle2DMode() {
+        this.showing2DMode = !this.showing2DMode;
+        this.toggle2DModeBtn.textContent = this.showing2DMode ? '3D State Space' : '2D State Space';
+        
+        const threeContainer = document.getElementById('three-container');
+        const canvas2D = document.getElementById('canvas-2d');
+        
+        if (this.showing2DMode) {
+            threeContainer.style.display = 'none';
+            if (!canvas2D) {
+                this.create2DCanvas();
+            } else {
+                canvas2D.style.display = 'block';
+            }
+            this.render2DStateSpace();
+        } else {
+            threeContainer.style.display = 'block';
+            if (canvas2D) canvas2D.style.display = 'none';
+        }
+    }
+    
+    togglePlayerMode() {
+        this.showingPlayerMode = !this.showingPlayerMode;
+        this.togglePlayerModeBtn.textContent = this.showingPlayerMode ? 'Normal Mode' : 'Player Mode';
+        
+        if (this.showingPlayerMode) {
+            this.addPlayerPiece();
+        } else {
+            this.removePlayerPieces();
+        }
+    }
+    
+    addPlayerPiece() {
+        // Add a small player piece (different color)
+        const playerPiece = {
+            id: 999,
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            isPlayer: true
+        };
+        
+        // Find available position
+        for (let y = 0; y <= this.boardHeight - 1; y++) {
+            for (let x = 0; x <= this.boardWidth - 1; x++) {
+                if (this.canPlacePiece(x, y, 1, 1)) {
+                    playerPiece.x = x;
+                    playerPiece.y = y;
+                    this.playerPieces.push(playerPiece);
+                    this.pieces.push(playerPiece);
+                    this.renderBoard();
+                    this.updatePieceCount();
+                    return;
+                }
+            }
+        }
+    }
+    
+    removePlayerPieces() {
+        this.pieces = this.pieces.filter(p => !p.isPlayer);
+        this.playerPieces = [];
+        this.renderBoard();
+        this.updatePieceCount();
+    }
+    
+    create2DCanvas() {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'canvas-2d';
+        canvas.width = 800;
+        canvas.height = 600;
+        canvas.style.display = 'block';
+        canvas.style.margin = '0 auto';
+        canvas.style.border = '1px solid #ddd';
+        canvas.style.borderRadius = '8px';
+        
+        const threeContainer = document.getElementById('three-container');
+        threeContainer.parentNode.insertBefore(canvas, threeContainer);
+        
+        this.canvas2D = canvas;
+        this.ctx2D = canvas.getContext('2d');
+        
+        // Add click handler
+        canvas.addEventListener('click', (e) => this.on2DCanvasClick(e));
+    }
+    
+    render2DStateSpace() {
+        if (!this.canvas2D) return;
+        
+        const ctx = this.ctx2D;
+        const states = Array.from(this.currentStates || this.states);
+        
+        if (states.length === 0) {
+            ctx.clearRect(0, 0, 800, 600);
+            ctx.fillStyle = '#666';
+            ctx.font = '16px Cal Sans';
+            ctx.textAlign = 'center';
+            ctx.fillText('Generate state space first', 400, 300);
+            return;
+        }
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, 800, 600);
+        
+        // Calculate layout grid
+        const cols = Math.ceil(Math.sqrt(states.length));
+        const rows = Math.ceil(states.length / cols);
+        const cellWidth = 800 / cols;
+        const cellHeight = 600 / rows;
+        const miniWidth = Math.min(cellWidth, cellHeight) * 0.8;
+        
+        // Draw each state as a mini puzzle
+        states.forEach((state, index) => {
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            const x = col * cellWidth + (cellWidth - miniWidth) / 2;
+            const y = row * cellHeight + (cellHeight - miniWidth) / 2;
+            
+            this.drawMiniState(ctx, state, x, y, miniWidth);
+        });
+    }
+    
+    drawMiniState(ctx, stateString, x, y, size) {
+        const board = stateString.split(',').map(Number);
+        const cellSize = size / Math.max(this.boardWidth, this.boardHeight);
+        
+        // Draw grid background
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(x, y, this.boardWidth * cellSize, this.boardHeight * cellSize);
+        
+        // Draw grid lines
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= this.boardWidth; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x + i * cellSize, y);
+            ctx.lineTo(x + i * cellSize, y + this.boardHeight * cellSize);
+            ctx.stroke();
+        }
+        for (let i = 0; i <= this.boardHeight; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + i * cellSize);
+            ctx.lineTo(x + this.boardWidth * cellSize, y + i * cellSize);
+            ctx.stroke();
+        }
+        
+        // Draw pieces with colors
+        const pieceColors = {};
+        const pieces = this.getPiecesFromStateString(stateString);
+        
+        pieces.forEach((piece, index) => {
+            const hue = piece.isPlayer ? 280 : (index * 137.5) % 360;
+            const color = `hsl(${hue}, 70%, 60%)`;
+            pieceColors[index + 1] = color;
+        });
+        
+        // Fill cells
+        for (let py = 0; py < this.boardHeight; py++) {
+            for (let px = 0; px < this.boardWidth; px++) {
+                const cellIndex = py * this.boardWidth + px;
+                const pieceId = board[cellIndex];
+                
+                if (pieceId > 0) {
+                    ctx.fillStyle = pieceColors[pieceId] || '#007bff';
+                    ctx.fillRect(
+                        x + px * cellSize + 0.5,
+                        y + py * cellSize + 0.5,
+                        cellSize - 1,
+                        cellSize - 1
+                    );
+                }
+            }
+        }
+    }
+    
+    on2DCanvasClick(e) {
+        const canvas = e.target;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        
+        const states = Array.from(this.currentStates || this.states);
+        const cols = Math.ceil(Math.sqrt(states.length));
+        const rows = Math.ceil(states.length / cols);
+        const cellWidth = 800 / cols;
+        const cellHeight = 600 / rows;
+        const miniWidth = Math.min(cellWidth, cellHeight) * 0.8;
+        
+        // Find clicked state
+        for (let i = 0; i < states.length; i++) {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            const x = col * cellWidth + (cellWidth - miniWidth) / 2;
+            const y = row * cellHeight + (cellHeight - miniWidth) / 2;
+            
+            if (clickX >= x && clickX <= x + miniWidth &&
+                clickY >= y && clickY <= y + miniWidth) {
+                this.loadStateFromNode(states[i]);
+                break;
+            }
+        }
     }
     
     applyBoardSize() {
