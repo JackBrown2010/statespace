@@ -10,9 +10,33 @@ class KlotskiPuzzle {
         this.states = new Set();
         this.stateGraph = new Map();
         
+        // New state space levels
+        this.currentStateLevel = 'normal'; // 'normal', 'sub', 'super', 'micro'
+        this.subStates = new Set();
+        this.subGraph = new Map();
+        this.superStates = new Map(); // Initialize as Map instead of Set
+        this.superGraph = new Map();
+        this.microStates = new Set(); // New microstate storage
+        this.microGraph = new Map();  // New microstate graph
+        
+        // Superstate configurations for parallel universes
+        this.superStateConfigurations = [];
+        
         this.showing2DMode = false;
         this.playerPieces = []; // Track player pieces separately
         this.showingPlayerMode = false;
+
+        // Advanced mode toggle and options (optional way to make it way more advanced)
+        this.advancedMode = false;
+        this.advancedOptions = {
+            forceIterationsMultiplier: 3,
+            superLayoutsLimit: 20,
+            maxForceIterationsCap: 200
+        };
+        
+        // Aggregation toggle: when true, every `aggregateSize` states are averaged into a single rendered node
+        this.aggregateNodes = false;
+        this.aggregateSize = 10;
         
         this.initializeDOM();
         this.initializeThreeJS();
@@ -97,10 +121,107 @@ class KlotskiPuzzle {
         this.toggleUnreachableBtn.addEventListener('click', () => this.toggleUnreachableStates());
         this.toggleAllCombinationsBtn.addEventListener('click', () => this.toggleAllCombinations());
         
+        // Add state level toggle buttons
+        this.toggleSubStatesBtn = document.createElement('button');
+        this.toggleSubStatesBtn.id = 'toggle-sub-states';
+        this.toggleSubStatesBtn.className = 'btn';
+        this.toggleSubStatesBtn.textContent = 'Show Substates';
+        this.toggleSubStatesBtn.addEventListener('click', () => this.toggleStateLevel('sub'));
+        
+        this.toggleSuperStatesBtn = document.createElement('button');
+        this.toggleSuperStatesBtn.id = 'toggle-super-states';
+        this.toggleSuperStatesBtn.className = 'btn';
+        this.toggleSuperStatesBtn.textContent = 'Show Superstates';
+        this.toggleSuperStatesBtn.addEventListener('click', () => this.toggleStateLevel('super'));
+        
+        this.toggleNormalStatesBtn = document.createElement('button');
+        this.toggleNormalStatesBtn.id = 'toggle-normal-states';
+        this.toggleNormalStatesBtn.className = 'btn';
+        this.toggleNormalStatesBtn.textContent = 'Show Normal States';
+        this.toggleNormalStatesBtn.addEventListener('click', () => this.toggleStateLevel('normal'));
+        
+        // Add microstates button
+        this.toggleMicroStatesBtn = document.createElement('button');
+        this.toggleMicroStatesBtn.id = 'toggle-micro-states';
+        this.toggleMicroStatesBtn.className = 'btn';
+        this.toggleMicroStatesBtn.textContent = 'Show Microstates';
+        this.toggleMicroStatesBtn.addEventListener('click', () => this.toggleStateLevel('micro'));
+        
+        // Add generate superstate configurations button
+        this.generateSuperConfigsBtn = document.createElement('button');
+        this.generateSuperConfigsBtn.id = 'generate-super-configs';
+        this.generateSuperConfigsBtn.className = 'btn';
+        this.generateSuperConfigsBtn.textContent = 'Generate Parallel Universes';
+        this.generateSuperConfigsBtn.addEventListener('click', () => this.generateSuperStateConfigurations());
+
+        // Advanced mode toggle
+        this.advancedModeBtn = document.createElement('button');
+        this.advancedModeBtn.id = 'toggle-advanced-mode';
+        this.advancedModeBtn.className = 'btn';
+        this.advancedModeBtn.textContent = 'Advanced Mode: Off';
+        this.advancedModeBtn.addEventListener('click', () => {
+            this.advancedMode = !this.advancedMode;
+            this.advancedModeBtn.textContent = `Advanced Mode: ${this.advancedMode ? 'On' : 'Off'}`;
+            // provide immediate feedback by re-rendering if a state-space exists
+            if (this.currentStates && this.currentStates.size) {
+                this.renderCurrentStateLevel();
+            }
+        });
+
+        // Estimate render time button + status text
+        this.estimateBtn = document.createElement('button');
+        this.estimateBtn.id = 'estimate-render-time';
+        this.estimateBtn.className = 'btn';
+        this.estimateBtn.textContent = 'Estimate Render Time';
+        this.estimateBtn.addEventListener('click', () => this.estimateRenderTime());
+        
+        this.estimateStatus = document.createElement('div');
+        this.estimateStatus.id = 'estimate-status';
+        this.estimateStatus.style.minWidth = '260px';
+        this.estimateStatus.style.fontSize = '13px';
+        this.estimateStatus.style.color = '#444';
+        this.estimateStatus.style.padding = '6px 8px';
+        this.estimateStatus.textContent = 'No estimate yet';
+        
+        // Aggregate nodes toggle (averages every this.aggregateSize states into single node)
+        this.toggleAggregateBtn = document.createElement('button');
+        this.toggleAggregateBtn.id = 'toggle-aggregate-nodes';
+        this.toggleAggregateBtn.className = 'btn';
+        this.toggleAggregateBtn.textContent = `Aggregate x${this.aggregateSize}: Off`;
+        this.toggleAggregateBtn.addEventListener('click', () => {
+            this.aggregateNodes = !this.aggregateNodes;
+            this.toggleAggregateBtn.textContent = `Aggregate x${this.aggregateSize}: ${this.aggregateNodes ? 'On' : 'Off'}`;
+            if (this.currentStates && this.currentStates.size) {
+                this.renderCurrentStateLevel();
+            }
+        });
+
         // Add toggle buttons to space controls
         const spaceControls = document.querySelector('.space-controls');
         spaceControls.insertBefore(this.toggle2DModeBtn, spaceControls.firstChild);
         spaceControls.insertBefore(this.togglePlayerModeBtn, this.toggle2DModeBtn.nextSibling);
+        
+        // Add state level buttons to space controls
+        spaceControls.insertBefore(this.toggleSuperStatesBtn, spaceControls.firstChild);
+        spaceControls.insertBefore(this.toggleSubStatesBtn, this.toggleSuperStatesBtn.nextSibling);
+        spaceControls.insertBefore(this.toggleNormalStatesBtn, this.toggleSubStatesBtn.nextSibling);
+        spaceControls.insertBefore(this.toggleMicroStatesBtn, this.toggleNormalStatesBtn.nextSibling);
+        spaceControls.insertBefore(this.generateSuperConfigsBtn, this.toggleNormalStatesBtn.nextSibling);
+        
+        // Insert advanced toggle at the end of the space controls
+        spaceControls.appendChild(this.advancedModeBtn);
+        // Insert aggregation toggle near the advanced controls
+        spaceControls.appendChild(this.toggleAggregateBtn);
+        spaceControls.appendChild(this.estimateBtn);
+        
+        // Place the estimate status under the puzzle info (below "States Found")
+        const puzzleInfo = document.querySelector('.puzzle-panel .info');
+        if (puzzleInfo) {
+            puzzleInfo.appendChild(this.estimateStatus);
+        } else {
+            // fallback to keeping it in the space controls if puzzle info is not found
+            spaceControls.appendChild(this.estimateStatus);
+        }
     }
     
     toggleUnreachableStates() {
@@ -879,42 +1000,22 @@ class KlotskiPuzzle {
                             
                             const newStateString = this.getStateStringFromPieces(newState);
                             
-                            // Only create node and edge if this is a genuinely new state
+                            // Always create an edge between currentState and newState
+                            // if they are distinct layouts (prevents missing connections
+                            // when the target state was already discovered).
+                            if (!this.stateGraph.has(currentStateString)) {
+                                this.stateGraph.set(currentStateString, []);
+                            }
+                            const edges = this.stateGraph.get(currentStateString);
+                            if (newStateString !== currentStateString && !edges.includes(newStateString)) {
+                                edges.push(newStateString);
+                            }
+                            
+                            // Enqueue the state if it hasn't been visited yet.
                             if (!visited.has(newStateString)) {
                                 visited.add(newStateString);
                                 queue.push(newState);
-                                
-                                // Ensure we have unique nodes by checking if state already exists
-                                const alreadyExists = Array.from(this.states).some(existingState => 
-                                    existingState === newStateString);
-                                
-                                if (!alreadyExists) {
-                                    // Add edge to graph - only connect if we have valid unique transition
-                                    if (!this.stateGraph.has(currentStateString)) {
-                                        this.stateGraph.set(currentStateString, []);
-                                    }
-                                    
-                                    // Create directed edge between unique states
-                                    const edges = this.stateGraph.get(currentStateString);
-                                    if (!edges.includes(newStateString)) {
-                                        edges.push(newStateString);
-                                    }
-                                }
-                            } else {
-                                // State already exists - still create edge but don't add new node
-                                if (this.states.has(newStateString)) {
-                                    if (!this.stateGraph.has(currentStateString)) {
-                                        this.stateGraph.set(currentStateString, []);
-                                    }
-                                    
-                                    const edges = this.stateGraph.get(currentStateString);
-                                    if (!edges.includes(newStateString)) {
-                                        edges.push(newStateString);
-                                    }
-                                }
                             }
-                            // Skip duplicate states
-                            continue;
                         }
                     }
                 }
@@ -1035,55 +1136,153 @@ class KlotskiPuzzle {
         // Position nodes in 3D space using force-directed layout based on distances
         const positions = this.forceDirectedLayout(stateArray, distanceMatrix);
         
-        // Create nodes with positions
-        stateArray.forEach((state, index) => {
+        // Initialize nodePositions from computed positions (mesh will be attached only if not aggregating)
+        stateArray.forEach((state) => {
             const pos = positions.get(state);
-            const nodeMesh = new THREE.Mesh(nodeGeometry, this.nodeMaterial);
-            nodeMesh.position.set(pos.x, pos.y, pos.z);
-            nodeMesh.userData = { state, index };
-            
-            // Store mapping from state string to pieces
-            const pieces = this.getPiecesFromStateString(state);
-            this.stateToPieces.set(state, pieces);
-            this.nodeToState.set(nodeMesh, state);
-            
-            // Add click handler
-            nodeMesh.callback = () => this.loadStateFromNode(state);
-            
-            this.scene.add(nodeMesh);
-            nodePositions.set(state, { 
-                x: pos.x, 
-                y: pos.y, 
-                z: pos.z, 
-                mesh: nodeMesh 
-            });
+            nodePositions.set(state, { x: pos.x, y: pos.y, z: pos.z, mesh: null });
         });
         
-        // Create edges
-        const edgeGeometry = new THREE.BufferGeometry();
-        const edgeVertices = [];
-        
-        for (const [fromState, toStates] of this.currentGraph.entries()) {
-            const fromPos = nodePositions.get(fromState);
-            if (!fromPos) continue;
-            
-            for (const toState of toStates) {
-                const toPos = nodePositions.get(toState);
-                if (!toPos) continue;
+        // Create individual node meshes (unless aggregation is enabled).
+        if (!this.aggregateNodes || this.aggregateSize <= 1) {
+            stateArray.forEach((state, index) => {
+                const pos = positions.get(state);
+                const nodeMaterial = this.getNodeMaterialForState(state, index);
+                const nodeMesh = new THREE.Mesh(nodeGeometry, nodeMaterial);
+                nodeMesh.position.set(pos.x, pos.y, pos.z);
+                nodeMesh.userData = { state, index };
                 
-                edgeVertices.push(fromPos.x, fromPos.y, fromPos.z);
-                edgeVertices.push(toPos.x, toPos.y, toPos.z);
+                // Store mapping from state string to pieces
+                const pieces = this.getPiecesFromStateString(state);
+                this.stateToPieces.set(state, pieces);
+                this.nodeToState.set(nodeMesh, state);
+                
+                // Add click handler
+                nodeMesh.callback = () => this.loadStateFromNode(state);
+                
+                this.scene.add(nodeMesh);
+                const entry = nodePositions.get(state);
+                if (entry) entry.mesh = nodeMesh;
+                
+                // Optional small label for advanced mode
+                if (this.advancedMode) {
+                    const labelText = `#${index}`;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256;
+                    canvas.height = 64;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                    ctx.font = '24px Cal Sans';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(labelText, canvas.width/2, canvas.height/2 + 8);
+                    
+                    const tex = new THREE.CanvasTexture(canvas);
+                    const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+                    const sprite = new THREE.Sprite(spriteMat);
+                    sprite.scale.set(6, 1.5, 1);
+                    sprite.position.set(pos.x, pos.y + 2.4, pos.z);
+                    sprite.userData = { labelFor: state };
+                    nodeMesh.userData._labelSprite = sprite;
+                    this.scene.add(sprite);
+                }
+            });
+        }
+        
+        // AGGREGATION: create averaged nodes for every `aggregateSize` states when toggle is on
+        if (this.aggregateNodes && this.aggregateSize > 1) {
+            const groups = this.groupStatesIntoChunks(stateArray, this.aggregateSize);
+            const aggGeometry = new THREE.SphereGeometry(1.6, 16, 16);
+            const aggMaterialBase = new THREE.MeshPhongMaterial({ color: 0xff7043, transparent: true, opacity: 0.95 });
+            const aggregatedNodes = [];
+            const stateToGroup = new Map();
+            
+            groups.forEach((group, gi) => {
+                let sx = 0, sy = 0, sz = 0, count = 0;
+                group.forEach(st => {
+                    const p = positions.get(st);
+                    if (!p) return;
+                    sx += p.x; sy += p.y; sz += p.z; count++;
+                    stateToGroup.set(st, gi);
+                });
+                if (count === 0) return;
+                sx /= count; sy /= count; sz /= count;
+                
+                const mat = aggMaterialBase.clone();
+                const nodeMesh = new THREE.Mesh(aggGeometry, mat);
+                nodeMesh.position.set(sx, sy, sz);
+                nodeMesh.userData = { groupStates: group.slice(), index: gi };
+                nodeMesh.callback = () => this.loadStateFromNode(group[0]); // load first state's layout on click
+                this.scene.add(nodeMesh);
+                aggregatedNodes.push(nodeMesh);
+            });
+            
+            // hide original per-state nodes to declutter view
+            this.stateNodes.forEach(n => n.visible = false);
+            
+            // Build aggregated edges between groups (unique pairs)
+            const aggEdgeVerts = [];
+            const seenPairs = new Set();
+            for (const [fromState, toStates] of this.currentGraph.entries()) {
+                const g1 = stateToGroup.get(fromState);
+                if (g1 === undefined) continue;
+                for (const toState of toStates) {
+                    const g2 = stateToGroup.get(toState);
+                    if (g2 === undefined || g1 === g2) continue;
+                    const key = g1 < g2 ? `${g1}|${g2}` : `${g2}|${g1}`;
+                    if (seenPairs.has(key)) continue;
+                    seenPairs.add(key);
+                    // average positions for each group to draw connecting segment
+                    const gp1 = groups[g1].reduce((acc, s) => { const p = positions.get(s); if (p) { acc.x += p.x; acc.y += p.y; acc.z += p.z; acc.c++; } return acc; }, {x:0,y:0,z:0,c:0});
+                    const gp2 = groups[g2].reduce((acc, s) => { const p = positions.get(s); if (p) { acc.x += p.x; acc.y += p.y; acc.z += p.z; acc.c++; } return acc; }, {x:0,y:0,z:0,c:0});
+                    if (gp1.c === 0 || gp2.c === 0) continue;
+                    aggEdgeVerts.push(gp1.x/gp1.c, gp1.y/gp1.c, gp1.z/gp1.c);
+                    aggEdgeVerts.push(gp2.x/gp2.c, gp2.y/gp2.c, gp2.z/gp2.c);
+                }
+            }
+            if (aggEdgeVerts.length > 0) {
+                const aggGeom = new THREE.BufferGeometry();
+                aggGeom.setAttribute('position', new THREE.Float32BufferAttribute(aggEdgeVerts, 3));
+                const aggLines = new THREE.LineSegments(aggGeom, this.edgeMaterial);
+                aggLines.userData._aggregated = true;
+                this.scene.add(aggLines);
+            }
+            
+            // Replace stateNodes reference with aggregated nodes so size slider affects them
+            this.stateNodes = aggregatedNodes;
+            // Update state count display to number of aggregated nodes
+            this.stateCount.textContent = groups.length;
+        }
+        
+        // Create edges
+        // Create per-state edges (skip when aggregating; aggregated edges are created inside aggregation block)
+        if (!this.aggregateNodes || this.aggregateSize <= 1) {
+            const edgeGeometry = new THREE.BufferGeometry();
+            const edgeVertices = [];
+            
+            for (const [fromState, toStates] of this.currentGraph.entries()) {
+                const fromPos = nodePositions.get(fromState);
+                if (!fromPos) continue;
+                
+                for (const toState of toStates) {
+                    const toPos = nodePositions.get(toState);
+                    if (!toPos) continue;
+                    
+                    edgeVertices.push(fromPos.x, fromPos.y, fromPos.z);
+                    edgeVertices.push(toPos.x, toPos.y, toPos.z);
+                }
+            }
+            
+            if (edgeVertices.length > 0) {
+                edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeVertices, 3));
+                const edgeMesh = new THREE.LineSegments(edgeGeometry, this.edgeMaterial);
+                this.scene.add(edgeMesh);
             }
         }
         
-        if (edgeVertices.length > 0) {
-            edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeVertices, 3));
-            const edgeMesh = new THREE.LineSegments(edgeGeometry, this.edgeMaterial);
-            this.scene.add(edgeMesh);
-        }
-        
         // Store node references for size updates
-        this.stateNodes = Array.from(nodePositions.values()).map(pos => pos.mesh);
+        if (!this.aggregateNodes || this.aggregateSize <= 1) {
+            this.stateNodes = Array.from(nodePositions.values()).map(pos => pos.mesh).filter(Boolean);
+        } // when aggregation is enabled, this.stateNodes is set to aggregated nodes inside the aggregation block above
         
         // Add raycaster for node clicking
         this.raycaster = new THREE.Raycaster();
@@ -1155,7 +1354,8 @@ class KlotskiPuzzle {
     
     forceDirectedLayout(states, distanceMatrix) {
         const positions = new Map();
-        const iterations = 50; // Reduced iterations for faster convergence
+        const baseIterations = 50; // base iterations
+        const iterations = Math.min(baseIterations * (this.advancedMode ? this.advancedOptions.forceIterationsMultiplier : 1), this.advancedOptions.maxForceIterationsCap);
         const repulsionStrength = 8; // Increased for better separation
         const attractionStrength = 0.05; // Reduced for smoother movement
         const damping = 0.92; // Slightly more damping
@@ -1390,7 +1590,7 @@ class KlotskiPuzzle {
         // Remove all objects except lights
         const objectsToRemove = [];
         this.scene.traverse((object) => {
-            if (object.isMesh || object.isLineSegments) {
+            if (object.isMesh || object.isLineSegments || object.isSprite) {
                 if (!object.isLight) {
                     objectsToRemove.push(object);
                 }
@@ -1420,6 +1620,131 @@ class KlotskiPuzzle {
         this.autoRotate = !this.autoRotate;
         this.controls.autoRotate = this.autoRotate;
         this.autoRotateBtn.textContent = this.autoRotate ? 'Stop Rotation' : 'Auto Rotate';
+    }
+    
+    // Estimate render time using a quick heuristic then a controlled benchmark
+    estimateRenderTime() {
+        // Quick heuristic: base on number of states (if available) or pieces
+        const stateCount = (this.currentStates && this.currentStates.size) || (this.states && this.states.size) || 0;
+        const piecesCount = this.pieces ? this.pieces.length : 0;
+        const heuristicSeconds = Math.max(0.05, (stateCount * 0.004) + (piecesCount * 0.02));
+        this.estimateStatus.textContent = `Quick estimate: ~${heuristicSeconds.toFixed(2)}s (heuristic) — running short benchmark...`;
+        
+        // Run a short controlled benchmark (caps time to avoid resource exhaustion)
+        const maxBenchmarkMs = this.advancedMode ? 3000 : 1200; // advanced users can allow a bit longer
+        this.runBenchmarkWorker(maxBenchmarkMs).then(opsPerMs => {
+            if (!opsPerMs || opsPerMs <= 0) {
+                this.estimateStatus.textContent = 'Benchmark failed or too quick to measure — using heuristic only.';
+                return;
+            }
+            
+            // Convert a hypothetical "work amount" for rendering to ops:
+            // we estimate rendering work roughly proportional to number of nodes * 1500 ops/node
+            const nodes = Math.max(1, stateCount || Math.max(1, piecesCount * 5));
+            const estimatedWorkOps = nodes * 1500;
+            const estimatedMs = estimatedWorkOps / opsPerMs;
+            const estimatedSeconds = (estimatedMs / 1000);
+            
+            this.estimateStatus.textContent = `Quick: ~${heuristicSeconds.toFixed(2)}s; Benchmark-based: ~${estimatedSeconds.toFixed(2)}s (nodes=${nodes}, ops/ms=${opsPerMs.toFixed(1)}).`;
+        }).catch(err => {
+            console.warn('Benchmark error', err);
+            this.estimateStatus.textContent = 'Benchmark failed — using heuristic only.';
+        });
+    }
+    
+    // Run a short CPU-bound benchmark inside a Web Worker with a strict time cap.
+    // Returns Promise<number> => operations per millisecond measured.
+    runBenchmarkWorker(maxMs = 1200) {
+        return new Promise((resolve, reject) => {
+            // If browser doesn't support Worker, fallback to a short main-thread benchmark (safe, short).
+            if (typeof Worker === 'undefined') {
+                try {
+                    const start = performance.now();
+                    let ops = 0;
+                    // Keep it short to avoid freezing: ~200ms loop
+                    const endTime = start + Math.min(200, maxMs / 6);
+                    while (performance.now() < endTime) {
+                        // cheap arithmetic work
+                        ops += (Math.imul(48271, (ops + 1) & 0xffff) >>> 0) & 0xffff;
+                    }
+                    const elapsed = performance.now() - start || 1;
+                    resolve(ops / elapsed);
+                } catch (e) {
+                    reject(e);
+                }
+                return;
+            }
+            
+            const blob = this.createBenchmarkWorkerBlob();
+            const url = URL.createObjectURL(blob);
+            const worker = new Worker(url);
+            let opsReported = 0;
+            let alive = true;
+            
+            const timer = setTimeout(() => {
+                // terminate after cap
+                if (alive) {
+                    alive = false;
+                    try { worker.terminate(); } catch(e) {}
+                    URL.revokeObjectURL(url);
+                    // resolve with whatever was reported
+                    resolve(Math.max(0.001, opsReported / Math.max(1, Math.min(maxMs, maxMs))));
+                }
+            }, maxMs);
+            
+            worker.onmessage = (e) => {
+                const data = e.data;
+                if (data.type === 'progress') {
+                    opsReported = data.ops;
+                    // update an optional progress hint (throttle DOM updates)
+                    if (this.estimateStatus) {
+                        this.estimateStatus.textContent = `Benchmark running... ${Math.round((data.elapsed / maxMs) * 100)}%`;
+                    }
+                } else if (data.type === 'done') {
+                    if (!alive) return;
+                    clearTimeout(timer);
+                    alive = false;
+                    worker.terminate();
+                    URL.revokeObjectURL(url);
+                    const elapsed = data.elapsed || 1;
+                    const ops = data.ops || 1;
+                    resolve(ops / elapsed);
+                }
+            };
+            
+            // Start benchmark with requested max runtime (worker will attempt to run until told to stop)
+            worker.postMessage({ cmd: 'start', maxMs });
+        });
+    }
+    
+    // Create a small worker blob that performs a controlled busy loop and reports ops done & elapsed time.
+    createBenchmarkWorkerBlob() {
+        const workerCode = `
+            self.onmessage = function(e) {
+                const maxMs = (e.data && e.data.maxMs) || 800;
+                const start = performance.now();
+                let ops = 0;
+                // Do short batches and post progress so main thread can kill if needed.
+                while (true) {
+                    const innerStart = performance.now();
+                    // run a tight batch of operations
+                    for (let i = 0; i < 20000; i++) {
+                        // inexpensive deterministic work
+                        ops += (Math.imul(48271, (ops + i) & 0xffff) >>> 0) & 0xffff;
+                    }
+                    const now = performance.now();
+                    const elapsed = now - start;
+                    // send periodic progress
+                    self.postMessage({ type: 'progress', ops: ops, elapsed: elapsed });
+                    if (elapsed >= maxMs) {
+                        // finish
+                        self.postMessage({ type: 'done', ops: ops, elapsed: elapsed });
+                        return;
+                    }
+                }
+            };
+        `;
+        return new Blob([workerCode], { type: 'application/javascript' });
     }
     
     animate() {
@@ -1662,6 +1987,579 @@ class KlotskiPuzzle {
         this.createEmptyBoard();
         this.renderBoard();
         this.updatePieceCount();
+    }
+    
+    toggleStateLevel(level) {
+        this.currentStateLevel = level;
+        
+        // Update button states
+        this.toggleNormalStatesBtn.textContent = level === 'normal' ? 'Normal States (Active)' : 'Show Normal States';
+        this.toggleSubStatesBtn.textContent = level === 'sub' ? 'Substates (Active)' : 'Show Substates';
+        this.toggleSuperStatesBtn.textContent = level === 'super' ? 'Superstates (Active)' : 'Show Superstates';
+        this.toggleMicroStatesBtn.textContent = level === 'micro' ? 'Microstates (Active)' : 'Show Microstates';
+        
+        // Update active buttons
+        [this.toggleNormalStatesBtn, this.toggleSubStatesBtn, this.toggleSuperStatesBtn, this.toggleMicroStatesBtn].forEach(btn => {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn');
+        });
+        
+        const activeBtn = level === 'normal' ? this.toggleNormalStatesBtn : 
+                         level === 'sub' ? this.toggleSubStatesBtn : 
+                         level === 'super' ? this.toggleSuperStatesBtn : this.toggleMicroStatesBtn;
+        activeBtn.classList.add('btn-primary');
+        
+        // Render appropriate state space
+        this.renderCurrentStateLevel();
+    }
+
+    generateSuperStateConfigurations() {
+        if (this.pieces.length === 0) {
+            alert('Add some pieces first to create similar puzzle layouts!');
+            return;
+        }
+
+        this.superStateConfigurations = [];
+        
+        const basePieces = [...this.pieces];
+        const originalPieceCount = basePieces.length;
+        
+        // Find all available spaces for extra pieces
+        const availableSpaces = this.findAvailableSpaces(basePieces);
+        const maxPossibleLayouts = Math.min(availableSpaces.length, this.advancedMode ? this.advancedOptions.superLayoutsLimit : 8); // increased when advanced
+        
+        // Generate dynamic number of layouts based on available spaces
+        const layoutCount = Math.max(1, maxPossibleLayouts);
+        
+        for (let layout = 0; layout < layoutCount; layout++) {
+            const similarLayout = this.createSimilarLayout(basePieces, layout, availableSpaces);
+            const config = {
+                id: `layout_${layout}`,
+                name: `Similar Layout ${layout + 1}`,
+                pieces: similarLayout,
+                description: `Contains all original ${originalPieceCount} pieces plus ${similarLayout.length - originalPieceCount} additional pieces`,
+                originalPieces: basePieces,
+                isSimilar: true
+            };
+            this.superStateConfigurations.push(config);
+        }
+        
+        // Generate state space for each layout
+        this.generateSuperStateSpace();
+        alert(`Generated ${this.superStateConfigurations.length} similar puzzle layouts based on available space!`);
+    }
+
+    createSimilarLayout(originalPieces, layoutIndex, availableSpaces) {
+        let pieces = [...originalPieces];
+        
+        if (!availableSpaces || availableSpaces.length === 0) {
+            return pieces; // Return base configuration if no extra space
+        }
+        
+        // Ensure we don't try to add more pieces than we have spaces for
+        const extraCount = Math.min(layoutIndex + 1, availableSpaces.length);
+        
+        for (let i = 0; i < extraCount; i++) {
+            const space = availableSpaces[i];
+            let newPiece;
+            
+            // Prioritize smaller pieces first, then larger ones based on available space
+            if (space.width === 1 && space.height === 1) {
+                newPiece = {
+                    id: this.nextPieceId++,
+                    x: space.x,
+                    y: space.y,
+                    width: 1,
+                    height: 1
+                };
+            } else if (space.width === 1 && space.height === 2) {
+                newPiece = {
+                    id: this.nextPieceId++,
+                    x: space.x,
+                    y: space.y,
+                    width: 1,
+                    height: (layoutIndex % 2 === 0) ? 2 : 1 // Alternate between 1x2 and 1x1 for variety
+                };
+            } else if (space.width === 2 && space.height === 1) {
+                newPiece = {
+                    id: this.nextPieceId++,
+                    x: space.x,
+                    y: space.y,
+                    width: (layoutIndex % 2 === 0) ? 2 : 1,
+                    height: 1
+                };
+            } else {
+                // For larger spaces, use available dimensions
+                newPiece = {
+                    id: this.nextPieceId++,
+                    x: space.x,
+                    y: space.y,
+                    width: space.width,
+                    height: space.height
+                };
+            }
+            
+            pieces.push(newPiece);
+        }
+        
+        return pieces;
+    }
+
+    findAvailableSpaces(existingPieces) {
+        const spaces = [];
+        const occupied = Array(this.boardWidth * this.boardHeight).fill(false);
+        
+        // Mark occupied positions
+        existingPieces.forEach(piece => {
+            if (piece.isCustom) {
+                piece.cells.forEach(cell => {
+                    const x = piece.x + cell.x;
+                    const y = piece.y + cell.y;
+                    if (x < this.boardWidth && y < this.boardHeight) {
+                        occupied[y * this.boardWidth + x] = true;
+                    }
+                });
+            } else {
+                for (let y = piece.y; y < piece.y + piece.height && y < this.boardHeight; y++) {
+                    for (let x = piece.x; x < piece.x + piece.width && x < this.boardWidth; x++) {
+                        occupied[y * this.boardWidth + x] = true;
+                    }
+                }
+            }
+        });
+        
+        // Find empty rectangular spaces
+        for (let h = 1; h <= 2; h++) {
+            for (let w = 1; w <= 2; w++) {
+                for (let y = 0; y <= this.boardHeight - h; y++) {
+                    for (let x = 0; x <= this.boardWidth - w; x++) {
+                        let canPlace = true;
+                        for (let py = y; py < y + h; py++) {
+                            for (let px = x; px < x + w; px++) {
+                                if (occupied[py * this.boardWidth + px]) {
+                                    canPlace = false;
+                                    break;
+                                }
+                            }
+                            if (!canPlace) break;
+                        }
+                        if (canPlace) {
+                            spaces.push({x, y, width: w, height: h});
+                        }
+                    }
+                }
+            }
+        }
+        
+        return spaces;
+    }
+
+    generateSuperStateSpace() {
+        if (this.superStateConfigurations.length === 0) {
+            alert('Generate similar layouts first!');
+            return;
+        }
+        
+        // Reset superStates to be a Map for proper key-value storage
+        this.superStates = new Map();
+        this.superGraph = new Map();
+        
+        // Generate state space for each layout
+        this.superStateConfigurations.forEach(config => {
+            // Temporarily switch to this layout's pieces
+            const originalPieces = [...this.pieces];
+            this.pieces = config.pieces;
+            
+            // Generate state space for this layout
+            this.generateStateSpaceForConfiguration(config);
+            
+            // Restore original pieces
+            this.pieces = originalPieces;
+        });
+        
+        // Update the display
+        this.renderCurrentStateLevel();
+    }
+
+    generateStateSpaceForConfiguration(config) {
+        const states = new Set();
+        const graph = new Map();
+        
+        // Generate states for this configuration
+        const initialState = config.pieces.map(p => ({...p}));
+        const queue = [initialState];
+        const visited = new Set([this.getStateStringFromPieces(initialState)]);
+        
+        while (queue.length > 0) {
+            const currentState = queue.shift();
+            const currentStateString = this.getStateStringFromPieces(currentState);
+            
+            if (!states.has(currentStateString)) {
+                states.add(currentStateString);
+                
+                // Try moving each piece in all directions
+                for (let pieceIndex = 0; pieceIndex < currentState.length; pieceIndex++) {
+                    const directions = [
+                        { dx: -1, dy: 0 }, // left
+                        { dx: 1, dy: 0 },  // right
+                        { dx: 0, dy: -1 }, // up
+                        { dx: 0, dy: 1 }   // down
+                    ];
+                    
+                    for (const direction of directions) {
+                        const newState = currentState.map(p => ({...p}));
+                        const piece = newState[pieceIndex];
+                        const newX = piece.x + direction.dx;
+                        const newY = piece.y + direction.dy;
+                        
+                        if (this.canPlacePieceInState(newState, pieceIndex, newX, newY)) {
+                            piece.x = newX;
+                            piece.y = newY;
+                            
+                            const newStateString = this.getStateStringFromPieces(newState);
+                            
+                            // Ensure an edge exists between these two micro-layout nodes
+                            // even if the target layout was already discovered.
+                            if (!graph.has(currentStateString)) {
+                                graph.set(currentStateString, []);
+                            }
+                            const edges = graph.get(currentStateString);
+                            if (newStateString !== currentStateString && !edges.includes(newStateString)) {
+                                edges.push(newStateString);
+                            }
+                            
+                            // Enqueue the state if it hasn't been visited yet.
+                            if (!visited.has(newStateString)) {
+                                visited.add(newStateString);
+                                queue.push(newState);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Store the results in superStates using the config ID as key
+        this.superStates.set(config.id, {
+            id: config.id,
+            name: config.name,
+            description: config.description,
+            states: states,
+            graph: graph,
+            pieceCount: config.pieces.length,
+            containsOriginal: config.isSimilar || false,
+            originalPieces: config.originalPieces || []
+        });
+    }
+
+    generateMicroStateSpace() {
+        if (this.pieces.length === 0) {
+            alert('Add some pieces first!');
+            return;
+        }
+
+        this.microStates.clear();
+        this.microGraph.clear();
+        
+        // Get the current state as a board
+        const currentStateString = this.getStateString();
+        const board = currentStateString.split(',').map(Number);
+        
+        // Create micro-pieces (1x1 squares) for each occupied cell
+        const microPieces = [];
+        let pieceId = 1;
+        
+        for (let y = 0; y < this.boardHeight; y++) {
+            for (let x = 0; x < this.boardWidth; x++) {
+                const index = y * this.boardWidth + x;
+                if (board[index] > 0) {
+                    microPieces.push({
+                        id: pieceId++,
+                        x: x,
+                        y: y,
+                        width: 1,
+                        height: 1
+                    });
+                }
+            }
+        }
+        
+        if (microPieces.length === 0) {
+            alert('No occupied squares found!');
+            return;
+        }
+        
+        // Generate state space with micro-pieces
+        const states = new Set();
+        const graph = new Map();
+        
+        // BFS to find all reachable states
+        const initialState = microPieces.map(p => ({...p}));
+        const queue = [initialState];
+        const visited = new Set([this.getStateStringFromPieces(initialState)]);
+        
+        while (queue.length > 0) {
+            const currentState = queue.shift();
+            const currentStateString = this.getStateStringFromPieces(currentState);
+            
+            if (!states.has(currentStateString)) {
+                states.add(currentStateString);
+                
+                // Try moving each micro-piece in all directions
+                for (let pieceIndex = 0; pieceIndex < currentState.length; pieceIndex++) {
+                    const directions = [
+                        { dx: -1, dy: 0 }, // left
+                        { dx: 1, dy: 0 },  // right
+                        { dx: 0, dy: -1 }, // up
+                        { dx: 0, dy: 1 }   // down
+                    ];
+                    
+                    for (const direction of directions) {
+                        const newState = currentState.map(p => ({...p}));
+                        const piece = newState[pieceIndex];
+                        const newX = piece.x + direction.dx;
+                        const newY = piece.y + direction.dy;
+                        
+                        if (this.canPlacePieceInState(newState, pieceIndex, newX, newY)) {
+                            piece.x = newX;
+                            piece.y = newY;
+                            
+                            const newStateString = this.getStateStringFromPieces(newState);
+                            
+                            // Always create an edge between currentState and newState
+                            // if they are distinct layouts (prevents missing connections
+                            // when the target state was already discovered).
+                            if (!graph.has(currentStateString)) {
+                                graph.set(currentStateString, []);
+                            }
+                            const edges = graph.get(currentStateString);
+                            if (newStateString !== currentStateString && !edges.includes(newStateString)) {
+                                edges.push(newStateString);
+                            }
+                            
+                            // Enqueue the state if it hasn't been visited yet.
+                            if (!visited.has(newStateString)) {
+                                visited.add(newStateString);
+                                queue.push(newState);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        this.microStates = states;
+        this.microGraph = graph;
+    }
+
+    renderCurrentStateLevel() {
+        // Clear any existing back button
+        if (this.backToSuperstatesBtn) {
+            this.backToSuperstatesBtn.style.display = 'none';
+        }
+        
+        this.clearStateSpace();
+        
+        switch (this.currentStateLevel) {
+            case 'sub':
+                if (this.states.size === 0) {
+                    this.generateStateSpace();
+                    if (this.states.size === 0) return;
+                }
+                this.generateSubStateSpace();
+                this.currentStates = this.subStates;
+                this.currentGraph = this.subGraph;
+                this.stateCount.textContent = this.subStates.size;
+                break;
+                
+            case 'super':
+                if (this.superStates.size === 0 && this.superStateConfigurations.length > 0) {
+                    this.generateSuperStateSpace();
+                }
+                this.renderSuperStatesAsNodes();
+                return;
+                
+            case 'micro':
+                if (this.microStates.size === 0) {
+                    this.generateMicroStateSpace();
+                }
+                this.currentStates = this.microStates;
+                this.currentGraph = this.microGraph;
+                this.stateCount.textContent = this.microStates.size;
+                break;
+                
+            case 'normal':
+            default:
+                this.currentStates = this.states;
+                this.currentGraph = this.stateGraph;
+                this.stateCount.textContent = this.states.size;
+                break;
+        }
+        
+        this.render3DStateSpace();
+    }
+
+    generateSubStateSpace() {
+        // Ensure normal states exist
+        if (!this.states || this.states.size === 0) {
+            this.generateStateSpace();
+            if (!this.states || this.states.size === 0) return;
+        }
+
+        // Helper: collapse a full state into a binary/merged representation (occupied=1, empty=0)
+        const mergeStateToBinary = (stateString) => {
+            return stateString.split(',').map(v => (Number(v) > 0 ? '1' : '0')).join(',');
+        };
+
+        this.subStates = new Set();
+        this.subGraph = new Map();
+
+        // Map each normal state -> merged state (binary)
+        const normalToMerged = new Map();
+        for (const normalState of this.states) {
+            const merged = mergeStateToBinary(normalState);
+            normalToMerged.set(normalState, merged);
+            this.subStates.add(merged);
+        }
+
+        // Build edges between merged states based on original stateGraph edges
+        for (const [fromState, toStates] of this.stateGraph.entries()) {
+            const mergedFrom = normalToMerged.get(fromState) || mergeStateToBinary(fromState);
+            if (!this.subGraph.has(mergedFrom)) this.subGraph.set(mergedFrom, []);
+            const edgeList = this.subGraph.get(mergedFrom);
+
+            for (const toState of toStates) {
+                const mergedTo = normalToMerged.get(toState) || mergeStateToBinary(toState);
+                if (mergedTo === mergedFrom) continue;
+                if (!edgeList.includes(mergedTo)) edgeList.push(mergedTo);
+            }
+        }
+
+        // Update state count display for substates
+        this.stateCount.textContent = this.subStates.size;
+    }
+
+    renderSuperStatesAsNodes() {
+        if (this.superStates.size === 0) return;
+        
+        // Create meta-nodes for each layout
+        const superNodeGeometry = new THREE.SphereGeometry(2, 32, 32);
+        const superNodeMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x9c27b0,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const positions = new Map();
+        const angleIncrement = (Math.PI * 2) / this.superStates.size;
+        
+        let index = 0;
+        for (const [key, superState] of this.superStates) {
+            const angle = index * angleIncrement;
+            const radius = 40;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            const z = (index % 2) * 20 - 10;
+            
+            const nodeMesh = new THREE.Mesh(superNodeGeometry, superNodeMaterial);
+            nodeMesh.position.set(x, y, z);
+            nodeMesh.userData = { 
+                superState,
+                name: superState.name,
+                description: superState.description
+            };
+            
+            // Click handler now navigates to that layout's normal state space
+            nodeMesh.callback = () => {
+                this.showLayoutNormalStates(superState);
+            };
+            
+            this.scene.add(nodeMesh);
+            positions.set(superState.id, { x, y, z, mesh: nodeMesh });
+            index++;
+        }
+        
+        this.stateCount.textContent = this.superStates.size;
+    }
+
+    showLayoutNormalStates(superState) {
+        // Switch to normal state level and load this layout's states
+        this.currentStateLevel = 'normal';
+        this.currentStates = superState.states;
+        this.currentGraph = superState.graph;
+        
+        // Update the actual puzzle pieces to match this layout
+        this.pieces = superState.originalPieces.map(p => ({...p}));
+        
+        // Update UI
+        this.toggleNormalStatesBtn.textContent = 'Normal States (Active)';
+        this.toggleSubStatesBtn.textContent = 'Show Substates';
+        this.toggleSuperStatesBtn.textContent = 'Show Superstates';
+        
+        // Update button styles
+        [this.toggleNormalStatesBtn, this.toggleSubStatesBtn, this.toggleSuperStatesBtn, this.toggleMicroStatesBtn].forEach(btn => {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn');
+        });
+        this.toggleNormalStatesBtn.classList.add('btn-primary');
+        
+        // Update the puzzle board to show the new layout
+        this.renderBoard();
+        this.updatePieceCount();
+        
+        // Render the normal state space for this layout
+        this.render3DStateSpace();
+        
+        // Add a back button to return to superstate view
+        this.showLayoutBackButton();
+    }
+
+    showLayoutBackButton() {
+        // Create or show back button
+        if (!this.backToSuperstatesBtn) {
+            this.backToSuperstatesBtn = document.createElement('button');
+            this.backToSuperstatesBtn.id = 'back-to-superstates';
+            this.backToSuperstatesBtn.className = 'btn btn-primary';
+            this.backToSuperstatesBtn.textContent = '← Back to Layouts';
+            this.backToSuperstatesBtn.addEventListener('click', () => {
+                this.toggleStateLevel('super');
+            });
+            
+            const spaceControls = document.querySelector('.space-controls');
+            spaceControls.insertBefore(this.backToSuperstatesBtn, spaceControls.firstChild);
+        } else {
+            this.backToSuperstatesBtn.style.display = 'inline-block';
+        }
+    }
+
+    // New helper to pick base color per state level and to create per-node materials (small HSL variation by index)
+    getNodeColorForLevel() {
+        // Return a hex color for each level
+        switch (this.currentStateLevel) {
+            case 'sub':   return 0xffa726; // orange
+            case 'super': return 0x9c27b0; // purple (layouts)
+            case 'micro': return 0x66bb6a; // green
+            case 'normal':
+            default:      return 0x4dabf7; // blue
+        }
+    }
+
+    getNodeMaterialForState(state, index = 0) {
+        const baseHex = this.getNodeColorForLevel();
+        const color = new THREE.Color(baseHex);
+        // light HSL offset for variety between nodes
+        const hOffset = ((index % 12) - 6) * 0.01;
+        color.offsetHSL(hOffset, 0.03, 0.02);
+        return new THREE.MeshPhongMaterial({ color });
+    }
+
+    // Helper to chunk states into groups of chunkSize (simple sequential grouping)
+    groupStatesIntoChunks(statesArray, chunkSize) {
+        const groups = [];
+        for (let i = 0; i < statesArray.length; i += chunkSize) {
+            groups.push(statesArray.slice(i, i + chunkSize));
+        }
+        return groups;
     }
 }
 
